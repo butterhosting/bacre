@@ -1,0 +1,44 @@
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  ci:
+    name: "CI Pipeline"
+    runs-on: ubuntu-latest
+    steps:
+      - name: "Environment :: Checkout"
+        uses: actions/checkout@v6
+
+      - name: "Environment :: Nix"
+        uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Environment :: Dev Shell"
+        run: nix develop --command sh -c 'cargo --version && rustc --version && bun --version && just --version'
+
+      - name: "Application :: Checks"
+        run: nix develop --command just check
+
+      - name: "Application :: Build"
+        run: nix develop --command just build
+
+      - name: "Application :: Inspect Binaries"
+        run: file dist/*
+
+      - name: "Application :: Smoke Test"
+        run: |
+          ./dist/bacre-linux-amd64 &
+          sleep 2
+          curl --fail --silent --show-error http://127.0.0.1:3001/api/hello
+          curl --fail --silent --show-error http://127.0.0.1:3001/ | grep "<title>Bacre</title>"
+
+      - name: "Application :: Binaries"
+        uses: actions/upload-artifact@v7
+        with:
+          name: bacre
+          path: dist/
+          retention-days: 1
