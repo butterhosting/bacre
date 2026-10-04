@@ -11,8 +11,8 @@ use crate::retention::Retention;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ServiceConfig {
-    pub service: String,
     pub home: String,
+    pub service: String,
     pub btrfs: Option<BtrfsConfig>,
     pub restic: Option<ResticConfig>,
 }
