@@ -1,7 +1,3 @@
-//! In-memory view over the archives. The archives themselves are the source of truth;
-//! this only caches their listings because restic listings hit S3. The service list is
-//! the atlas: a service exists when a bacre.yaml says so.
-
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -15,11 +11,8 @@ use crate::backends::{self, Context};
 use crate::models::archives::{Backend, BackendState, BackendStatus, Problem, Service, iso};
 use crate::models::atlas::Entry;
 
-/// How often the archives are listed again when nothing else prompted it
 const REFRESH: Duration = Duration::from_secs(30 * 60);
-/// How often the atlas is looked at: a handful of small files, so far more often than the archives
 const ATLAS_CHECK: Duration = Duration::from_secs(20);
-/// A listing older than this is refreshed when someone looks at it
 const STALE: chrono::Duration = chrono::Duration::minutes(5);
 
 pub struct ArchiveService {
@@ -36,11 +29,9 @@ struct State {
     refreshed_at: Option<DateTime<Utc>>,
     errors: Vec<Problem>,
     refreshing: bool,
-    /// What the atlas looked like at the last refresh, to notice when a bacre.yaml changes
     scanned: Option<Scan>,
 }
 
-/// Everything about the archives but the staged downloads and the schedules, which are worked out per request
 pub struct View {
     pub refreshed_at: Option<String>,
     pub refreshing: bool,
@@ -62,8 +53,6 @@ impl ArchiveService {
         })
     }
 
-    /// Lists now and on an interval from then on; returns once the first listing is in.
-    /// In between, a changed, new or removed bacre.yaml brings its own refresh.
     pub async fn start(self: &Arc<Self>) {
         self.refresh().await;
         {
@@ -90,12 +79,10 @@ impl ArchiveService {
         }
     }
 
-    /// The atlas as of the last refresh
     pub fn entries(&self) -> Vec<Entry> {
         self.state.lock().unwrap().atlas.clone()
     }
 
-    /// The atlas entry behind a service
     pub fn entry(&self, service: &str) -> Option<Entry> {
         self.state
             .lock()
@@ -114,8 +101,6 @@ impl ArchiveService {
         &self.ctx
     }
 
-    /// For when someone opens a page: what there is goes out at once, and an old listing is
-    /// renewed behind it, which catches whatever changed the archives from outside Bacre.
     pub fn refresh_if_stale(self: &Arc<Self>) {
         let stale = {
             let state = self.state.lock().unwrap();
@@ -207,7 +192,6 @@ impl ArchiveService {
                         source: format!("{backend} · {name}"),
                         message: message.clone(),
                     });
-                    // a configured backend can always be described
                     if let Ok(info) = backends::describe(entry, backend) {
                         service_backends.insert(
                             backend,
@@ -232,7 +216,6 @@ impl ArchiveService {
         )
     }
 
-    /// Runs `work` again and again, `period` apart, for as long as the service lives
     fn every<F>(self: &Arc<Self>, period: Duration, work: impl Fn(Arc<Self>) -> F + Send + 'static)
     where
         F: Future<Output = ()> + Send,

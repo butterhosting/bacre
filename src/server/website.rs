@@ -1,6 +1,5 @@
-//! The website, built by Bun into `website/dist` and carried inside the binary. A release
-//! build embeds the files; a debug build reads them from the folder as it is asked for
-//! them, so a rebuilt website shows up without recompiling the server.
+//! A release build embeds `website/dist`; a debug build reads it from disk on every request,
+//! so a rebuilt website shows up without recompiling the server.
 
 use axum::http::{StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
@@ -12,7 +11,6 @@ struct Assets;
 
 const INDEX: &str = "index.html";
 
-/// The file the path names, and otherwise the page itself: its routes live in the browser
 pub async fn serve(uri: Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
     if let Some(response) = file(path) {

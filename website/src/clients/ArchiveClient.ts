@@ -9,7 +9,6 @@ export class ArchiveClient {
     return Archives.parse(json);
   }
 
-  /** Deletes a staged download from the staging directory */
   public async discard(staged: Pick<Archives.Staged, "service" | "handle">): Promise<void> {
     await this.yesttp.delete(`/staged/${encodeURIComponent(staged.service)}/${encodeURIComponent(staged.handle)}`, { responseType: "text" });
   }

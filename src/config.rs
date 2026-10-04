@@ -1,10 +1,4 @@
-//! The daemon's own configuration, one YAML file passed on the command line. Everything a
-//! service needs is in its bacre.yaml instead; this only holds what is Bacre's: where to
-//! listen, where the services' bacre.yaml files are, who may log in, and the named sets of
-//! environment variables those files refer to.
-//!
-//! Every path in it may be relative, and is then relative to the config file itself, so a
-//! config can keep its working directories beside it.
+//! Every path in the config may be relative, and is then relative to the config file itself.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -13,24 +7,14 @@ use serde::Deserialize;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
-    /// `dev` answers btrfs and btrbk with a fake (a container has no btrfs) and runs everything else
-    /// for real against the sandbox
     pub stage: Stage,
     pub server: Server,
-    /// Globs or paths of the `bacre.yaml` files, one per service (braces allowed)
     pub services: Vec<String>,
-    /// Where short-lived files go (the btrbk configuration of a running backup)
     pub tmp_dir: PathBuf,
-    /// Basic auth is on when this names at least one user
     pub users: Vec<User>,
-    /// Named sets of environment variables a bacre.yaml can refer to (a restic password, S3 keys, …)
     pub envsets: BTreeMap<String, BTreeMap<String, String>>,
-    /// Where the outcome of every job is POSTed
     pub webhook: Option<Webhook>,
-    /// What a backend needs from the machine, whatever the service
     pub backends: Backends,
-    /// Outside production only: a directory Bacre may fill with made-up services (seed) and
-    /// empty again (purge). Nothing outside it is ever written or deleted by either.
     pub sandbox: Option<PathBuf>,
 }
 
@@ -38,6 +22,8 @@ pub struct Config {
 #[serde(rename_all = "lowercase")]
 pub enum Stage {
     Dev,
+    /// Like dev, but nothing happens by itself: no first seed, no sample jobs, no schedules firing
+    E2e,
     #[default]
     Prod,
 }
@@ -46,6 +32,7 @@ impl Stage {
     pub fn as_str(self) -> &'static str {
         match self {
             Stage::Dev => "dev",
+            Stage::E2e => "e2e",
             Stage::Prod => "prod",
         }
     }
@@ -57,22 +44,18 @@ pub struct Server {
     pub port: u16,
 }
 
-/// From a `username:bcrypt-hash` entry (`htpasswd -nB <username>`)
 #[derive(Debug, Clone, PartialEq)]
 pub struct User {
     pub username: String,
     pub password_hash: String,
 }
 
-/// With a secret, the body is signed (HMAC-SHA256, `X-Bacre-Signature`)
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Webhook {
     pub url: String,
     pub secret: Option<String>,
 }
 
-/// A backend without a block here is not set up on this daemon, and a bacre.yaml that asks for
-/// it is refused. btrfs needs nothing beyond its tools.
 #[derive(Debug, Clone, PartialEq, Deserialize, Default)]
 pub struct Backends {
     #[serde(default)]
@@ -83,11 +66,9 @@ pub struct Backends {
 #[serde(rename_all = "camelCase")]
 pub struct ResticBackend {
     pub cache_dir: PathBuf,
-    /// Where downloaded snapshots wait to be inspected and restored: <stagingDir>/<service>/<snapshot>
     pub staging_dir: PathBuf,
 }
 
-/// The file as written, before it is checked
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Raw {
@@ -163,7 +144,7 @@ impl Config {
         }
         match (&raw.sandbox, raw.stage) {
             (Some(_), Stage::Prod) => {
-                return Err("sandbox: only outside production (stage: dev)".to_string());
+                return Err("sandbox: only outside production (stage: dev or e2e)".to_string());
             }
             (Some(sandbox), _) if sandbox.as_os_str().is_empty() => {
                 return Err("sandbox: must not be empty".to_string());
@@ -184,14 +165,12 @@ impl Config {
         })
     }
 
-    /// What restic needs from the machine, when this daemon has it set up
     pub fn restic(&self) -> Result<&ResticBackend, String> {
         self.backends.restic.as_ref().ok_or_else(|| {
             "restic is not set up on this daemon: its config has no backends.restic".to_string()
         })
     }
 
-    /// Reads the file and anchors its relative paths to the directory it is in
     pub fn load(path: &Path) -> Result<Config, String> {
         let text = std::fs::read_to_string(path)
             .map_err(|e| format!("could not read {}: {e}", path.display()))?;
@@ -220,7 +199,6 @@ impl Config {
             restic.cache_dir = anchor(&restic.cache_dir);
             restic.staging_dir = anchor(&restic.staging_dir);
         }
-        // `..` resolved, so the check below sees where the sandbox really is
         config.sandbox = config
             .sandbox
             .as_deref()
@@ -241,7 +219,6 @@ impl Config {
     }
 }
 
-/// The path with `.` and `..` worked out on the text alone, without asking the file system
 fn lexical(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for component in path.components() {
@@ -260,7 +237,6 @@ fn lexical(path: &Path) -> PathBuf {
 pub mod testing {
     use super::Config;
 
-    /// The smallest config there is, with whatever a test adds to it
     pub fn config(extra: &str) -> Config {
         parse(extra).unwrap()
     }

@@ -1,9 +1,4 @@
-//! Seed and purge: the dev stage's sandbox, a made-up machine with real files, real hooks
-//! and real restic repositories (btrfs is the one thing the sandbox shell fakes). A seed
-//! empties the sandbox and builds the world below in it; a purge only empties it. Neither
-//! touches anything outside the sandbox directory, and neither exists in production.
-//!
-//! The world, one service per thing worth seeing on the website:
+//! The seeded world, one service per thing worth seeing on the website:
 //!
 //! | service | btrfs                     | restic                                         |
 //! |---------|---------------------------|------------------------------------------------|
@@ -28,9 +23,7 @@ use crate::services::archive_service::ArchiveService;
 use crate::services::scheduler::Scheduler;
 use crate::shell::Env;
 
-/// The envset every seeded repository is created with
 const ENVSET: &str = "demo";
-/// An envset whose password does not open the repositories, for a listing that fails
 const WRONG_ENVSET: &str = "demo-wrong-password";
 
 pub struct SandboxService {
@@ -43,7 +36,6 @@ pub struct SandboxService {
 
 #[derive(Debug)]
 pub enum Refusal {
-    /// A job is running, or another seed or purge
     Busy(Busy),
     Failed(String),
 }
@@ -55,7 +47,6 @@ impl From<String> for Refusal {
 }
 
 impl SandboxService {
-    /// Nothing without a sandbox in the config
     pub fn new(
         ctx: Context,
         job_service: Arc<JobService>,
@@ -72,7 +63,6 @@ impl SandboxService {
         }))
     }
 
-    /// Empties the sandbox and forgets every job
     pub async fn purge(&self) -> Result<(), Refusal> {
         let hold = self.job_service.hold().map_err(Refusal::Busy)?;
         self.empty().await?;
@@ -80,7 +70,6 @@ impl SandboxService {
         Ok(())
     }
 
-    /// Empties the sandbox, builds the world in it, and forgets every job
     pub async fn seed(&self) -> Result<(), Refusal> {
         let hold = self.job_service.hold().map_err(Refusal::Busy)?;
         self.empty().await?;
@@ -89,7 +78,6 @@ impl SandboxService {
         built.map_err(Refusal::Failed)
     }
 
-    /// A seed on the first start, so the dev stage has something to show
     pub async fn seed_if_empty(&self) {
         if tokio::fs::metadata(self.root.join("services"))
             .await
@@ -104,16 +92,22 @@ impl SandboxService {
         }
     }
 
+    /// Everything in the sandbox goes, the directory itself stays: it may be a mount point
     async fn empty(&self) -> Result<(), String> {
-        match tokio::fs::remove_dir_all(&self.root).await {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
-                return Err(format!("could not empty {}: {e}", self.root.display()));
-            }
-            _ => {}
-        }
+        let failed = |e: std::io::Error| format!("could not empty {}: {e}", self.root.display());
         tokio::fs::create_dir_all(&self.root)
             .await
-            .map_err(|e| format!("could not create {}: {e}", self.root.display()))
+            .map_err(failed)?;
+        let mut entries = tokio::fs::read_dir(&self.root).await.map_err(failed)?;
+        while let Some(entry) = entries.next_entry().await.map_err(failed)? {
+            let path = entry.path();
+            if entry.file_type().await.map_err(failed)?.is_dir() {
+                tokio::fs::remove_dir_all(&path).await.map_err(failed)?;
+            } else {
+                tokio::fs::remove_file(&path).await.map_err(failed)?;
+            }
+        }
+        Ok(())
     }
 
     async fn forget(&self, hold: &Hold) {
@@ -171,7 +165,6 @@ impl SandboxService {
             if !moments.is_empty() {
                 self.restic(&paths, &["init"]).await?;
                 if spec.database {
-                    // what `backupPrepare` would have dumped, for the history to hold
                     tokio::fs::copy(&paths.database, &paths.dump)
                         .await
                         .map_err(|e| e.to_string())?;
@@ -228,30 +221,23 @@ impl SandboxService {
 
 struct Spec {
     name: &'static str,
-    /// Has a "database" next to its files, which the restic hooks dump and load
     database: bool,
-    /// btrfs stop and start hooks, and an hourly schedule; without, by hand and hot only
     lifecycle: bool,
     restic: Option<ResticSpec>,
 }
 
 struct ResticSpec {
     envset: &'static str,
-    /// Daily at 03:00, or only by hand
     scheduled: bool,
     history: History,
-    /// Hooks around the backup (and, unless `restorable` is off, a restore hook)
     hooks: bool,
     restorable: bool,
 }
 
 #[derive(Clone, Copy)]
 enum History {
-    /// No repository at all: the first backup creates it
     Nothing,
-    /// A snapshot ten minutes ago and one on each of the three days before
     Recent,
-    /// Daily snapshots that stopped nine days ago
     Stale,
 }
 
@@ -271,7 +257,6 @@ impl History {
     }
 }
 
-/// 03:01 on the day of `day`, when the schedule would have run
 fn at_night(day: DateTime<Local>) -> DateTime<Local> {
     let wall = day.date_naive().and_hms_opt(3, 1, 4).expect("a valid time");
     Local.from_local_datetime(&wall).earliest().unwrap_or(day)
@@ -364,14 +349,12 @@ const SPECS: [Spec; 8] = [
     },
 ];
 
-/// Where everything lives in the sandbox: two "disks", the dumps, the services, the repositories
 struct World {
     root: PathBuf,
     snapshots: PathBuf,
     target: PathBuf,
 }
 
-/// Where one service's things are
 struct Paths {
     home: PathBuf,
     live: PathBuf,
@@ -418,7 +401,6 @@ fn show(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
 
-/// What a seeded service has on disk before anything is backed up
 fn files(spec: &Spec, paths: &Paths) -> Vec<(PathBuf, String)> {
     let name = spec.name;
     let mut files = vec![
@@ -430,7 +412,6 @@ fn files(spec: &Spec, paths: &Paths) -> Vec<(PathBuf, String)> {
             paths.live.join("data/notes/first.md"),
             format!("The first note of {name}.\n"),
         ),
-        // what the hooks write, so a stopped service can be told from a running one
         (paths.home.join("state"), "running\n".to_string()),
     ];
     if spec.database {
@@ -438,14 +419,11 @@ fn files(spec: &Spec, paths: &Paths) -> Vec<(PathBuf, String)> {
             paths.database.clone(),
             format!("{name}: the database, as seeded.\n"),
         ));
-        // the directory the dump goes in; it holds nothing outside a backup
         files.push((paths.dumps.join(".keep"), String::new()));
     }
     files
 }
 
-/// The service's bacre.yaml. The hooks do real work on the sandbox's files; `state` stands
-/// in for whether the service runs.
 fn bacre_yaml(world: &World, spec: &Spec) -> String {
     let paths = world.paths(spec.name);
     let (name, live, dumps) = (spec.name, show(&paths.live), show(&paths.dumps));

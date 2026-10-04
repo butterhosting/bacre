@@ -1,5 +1,3 @@
-//! Runs a bacre.yaml hook: a bash script, in the service's home, with its output in the job log.
-
 use super::Context;
 use crate::failure::{Failure, Outcome};
 use crate::jobs::log::Log;
@@ -35,7 +33,6 @@ pub async fn run(
     Ok(())
 }
 
-/// Runs a command that is Bacre's own step rather than a hook, narrated the same way
 pub async fn exec(ctx: &Context, command: &[String], label: &str, log: &Log) -> Outcome {
     log.info(format!("==> {label}"));
     let code = ctx

@@ -1,6 +1,3 @@
-//! Basic auth for the API: on when the daemon config names at least one user, off
-//! otherwise. Hashes are bcrypt (`htpasswd -nB`).
-
 use std::sync::Arc;
 
 use axum::Json;
@@ -46,7 +43,6 @@ pub async fn guard(State(users): State<Users>, request: Request, next: Next) -> 
     next.run(request).await
 }
 
-/// The username and password of a `Basic …` header; nothing for anything else
 fn extract_basic(header: &str) -> Option<(String, String)> {
     let (scheme, encoded) = header.split_at_checked(6)?;
     if !scheme.eq_ignore_ascii_case("basic ") || encoded.is_empty() {
@@ -83,7 +79,6 @@ mod tests {
     use super::*;
     use crate::config::testing;
 
-    /// The layout of the real router: the API behind the guard, the health check outside it
     fn router(users: &[String]) -> Router {
         let entries: Vec<String> = users.iter().map(|entry| format!("'{entry}'")).collect();
         let config = testing::config(&format!("users: [{}]", entries.join(", ")));

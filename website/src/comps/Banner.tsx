@@ -3,7 +3,6 @@ import type { Archives } from "@/models/Archives";
 type Props = {
   errors: Archives.Problem[];
 };
-/** One card per problem of the last refresh: where it came from, and what it said */
 export function Banner({ errors }: Props) {
   if (errors.length === 0) {
     return null;

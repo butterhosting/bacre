@@ -57,7 +57,7 @@ async fn main() -> ExitCode {
 async fn run(config_path: &Path) -> Result<(), String> {
     let config = Arc::new(Config::load(config_path)?);
     let shell: Arc<dyn Shell> = match config.stage {
-        Stage::Dev => Arc::new(SandboxShell::default()),
+        Stage::Dev | Stage::E2e => Arc::new(SandboxShell::default()),
         Stage::Prod => Arc::new(RealShell),
     };
 
@@ -123,19 +123,26 @@ async fn run(config_path: &Path) -> Result<(), String> {
         sandbox: sandbox_service.clone(),
     });
 
-    // The page says "loading" while the first listing runs; the scheduler waits for it, to see what was missed
     tokio::spawn({
         let (config, job_service, scheduler) =
             (config.clone(), job_service.clone(), scheduler.clone());
         async move {
-            if let Some(sandbox) = &sandbox_service {
-                sandbox.seed_if_empty().await;
+            match config.stage {
+                Stage::Dev => {
+                    if let Some(sandbox) = &sandbox_service {
+                        sandbox.seed_if_empty().await;
+                    }
+                    archive_service.start().await;
+                    dev_jobs::seed(&job_service);
+                    scheduler.start();
+                }
+                // the schedules are listed, but nothing fires: a test decides what runs
+                Stage::E2e => archive_service.start().await,
+                Stage::Prod => {
+                    archive_service.start().await;
+                    scheduler.start();
+                }
             }
-            archive_service.start().await;
-            if config.stage == Stage::Dev {
-                dev_jobs::seed(&job_service);
-            }
-            scheduler.start();
         }
     });
 
@@ -145,10 +152,8 @@ async fn run(config_path: &Path) -> Result<(), String> {
     }
 }
 
-/// Returns when the daemon should exit. A restart must not cut a job short (a cold snapshot
-/// or a restore has its service stopped), so nothing new starts and the daemon leaves once
-/// the running job has ended and its report has gone out. The dev stage just leaves: its
-/// jobs are make-believe.
+/// A restart must not cut a job short (a cold snapshot or a restore has its service stopped):
+/// nothing new starts, and the daemon leaves once the running job and its report are done.
 async fn leave(
     config: &Config,
     job_service: &JobService,
@@ -161,7 +166,7 @@ async fn leave(
         _ = terminate.recv() => "SIGTERM",
         _ = interrupt.recv() => "SIGINT",
     };
-    if config.stage == Stage::Dev {
+    if config.stage != Stage::Prod {
         return;
     }
     scheduler.stop();

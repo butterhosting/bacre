@@ -11,16 +11,10 @@ import { Chip } from "./Chip";
 
 type Props = {
   service: Archives.Service;
-  /** What is being put back */
   snapshot: Archives.Snapshot;
-  /** Where the download sits, for the backends that stage one first */
   staged?: Archives.Staged;
   onClose: () => void;
 };
-/**
- * The last stop before a service's live data is replaced: what goes back, what will run,
- * how recent the newest local snapshot is, and the service's name typed out to confirm.
- */
 export function RestoreDialog({ service, snapshot, staged, onClose }: Props) {
   const jobClient = useRegistry(JobClient);
   const navigate = useNavigate();
@@ -54,7 +48,11 @@ export function RestoreDialog({ service, snapshot, staged, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center bg-[#6b6259]/80 p-3 md:p-6" onClick={onClose}>
-      <div className="max-h-full w-[600px] max-w-full overflow-y-auto rounded-[14px] border border-c-line bg-c-card" onClick={(e) => e.stopPropagation()}>
+      <div
+        role="dialog"
+        aria-modal
+        aria-label={`Restore ${service.name}`}
+        className="max-h-full w-[600px] max-w-full overflow-y-auto rounded-[14px] border border-c-line bg-c-card" onClick={(e) => e.stopPropagation()}>
         <div className="flex flex-col gap-3.5 px-6 pt-5 pb-4.5">
           <h2 className="font-display text-2xl font-semibold">Restore {service.name}</h2>
 
@@ -120,7 +118,6 @@ export function RestoreDialog({ service, snapshot, staged, onClose }: Props) {
 namespace Internal {
   const HOOK = "rounded bg-c-cardhead px-1.5 py-0.5 font-mono text-xs";
 
-  /** The hooks a restore runs, by their bacre.yaml path; a new backend does not compile without a case */
   export function Runs({ info }: { info: Archives.BackendInfo }) {
     switch (info.backend) {
       case "btrfs":

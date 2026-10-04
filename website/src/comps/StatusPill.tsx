@@ -3,13 +3,12 @@ import clsx from "clsx";
 
 type Props = {
   status: Jobs.Status;
-  /** The job page's headline version */
   large?: boolean;
 };
-/** The three states a job can be in, with a mark that reads at a glance */
 export function StatusPill({ status, large }: Props) {
   return (
     <span
+      data-testid="status"
       className={clsx(
         "inline-flex items-center rounded-full font-semibold",
         large ? "gap-2 px-3.5 py-1.5 text-sm" : "gap-1.5 px-2.5 py-[3px] text-xs",

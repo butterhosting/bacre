@@ -10,16 +10,10 @@ import { Chip } from "./Chip";
 
 type Props = {
   backend: Archives.Backend;
-  /** The services that can be backed up with this backend */
   candidates: Archives.Service[];
   onClose: () => void;
 };
-/**
- * A grid: one row per service, one checkbox column per way the backend can back it up.
- * At most one box per row is ticked (none means the service stays out), and the header
- * boxes tick or clear a whole column. The columns come from one map per backend, so a
- * new backend does not compile until it has declared them.
- */
+/** At most one box per row is ticked; none means the service stays out */
 export function BackupDialog({ backend, candidates, onClose }: Props) {
   const jobClient = useRegistry(JobClient);
   const navigate = useNavigate();
@@ -81,7 +75,11 @@ export function BackupDialog({ backend, candidates, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center bg-[#6b6259]/80 p-3 md:p-6" onClick={onClose}>
-      <div className="max-h-full w-[600px] max-w-full overflow-y-auto rounded-[14px] border border-c-line bg-c-card" onClick={(e) => e.stopPropagation()}>
+      <div
+        role="dialog"
+        aria-modal
+        aria-label={`Backup ${backend}`}
+        className="max-h-full w-[600px] max-w-full overflow-y-auto rounded-[14px] border border-c-line bg-c-card" onClick={(e) => e.stopPropagation()}>
         <div className="flex flex-col gap-1.5 px-6 pt-5 pb-3.5">
           <h2 className="flex items-center gap-2.5 font-display text-2xl font-semibold">
             Backup <Chip backend={backend} />
@@ -137,12 +135,10 @@ export function BackupDialog({ backend, candidates, onClose }: Props) {
 }
 
 namespace Internal {
-  /** service → the column it is ticked in */
   export type Choice = Map<string, string>;
 
   type Form = {
     hint: string;
-    /** The ways this backend can back a service up; the first one is ticked when the dialog opens */
     columns: Array<{ key: string; label: string }>;
     build(picked: Array<[service: string, column: string]>): Jobs.BackupRequest;
   };

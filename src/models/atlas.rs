@@ -1,10 +1,4 @@
-//! The atlas: one `bacre.yaml` per service, found through the daemon config. It is the
-//! whole list of services Bacre knows; it says where a service lives and how each backend
-//! backs it up and restores it. Hooks are multi-line bash, run with `bash -euo pipefail`
-//! in `home`.
-//!
-//! A file is read in one pass that collects every problem it has, rather than stopping at
-//! the first: someone fixing a bacre.yaml wants the whole list.
+//! A file is read in one pass that collects every problem it has, rather than stopping at the first.
 
 use serde_yaml_ng::{Mapping, Value};
 
@@ -20,7 +14,6 @@ pub struct ServiceConfig {
 }
 
 impl ServiceConfig {
-    /// Whether the service's bacre.yaml has a block for the backend
     pub fn configures(&self, backend: Backend) -> bool {
         match backend {
             Backend::Btrfs => self.btrfs.is_some(),
@@ -28,7 +21,6 @@ impl ServiceConfig {
         }
     }
 
-    /// When Bacre backs the backend up by itself; nothing means only by hand
     pub fn schedule(&self, backend: Backend) -> Option<&str> {
         match backend {
             Backend::Btrfs => self.btrfs.as_ref()?.schedule.as_deref(),
@@ -42,17 +34,11 @@ impl ServiceConfig {
 /// `target` that receives a copy of each snapshot.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BtrfsConfig {
-    /// The live subvolume, absolute, e.g. /srv/disk/@wiki
     pub subvolume: String,
-    /// Where its snapshots go, absolute, on the same filesystem
     pub snapshots: String,
-    /// Snapshot directories on other btrfs filesystems that every snapshot is also sent to; none is fine
     pub targets: Vec<String>,
-    /// btrbk's snapshot_preserve_min / snapshot_preserve, applied to the targets as well
     pub retention: BtrfsRetention,
-    /// Scheduled snapshots are hot
     pub schedule: Option<String>,
-    /// How to stop the service and bring it back: needed for cold snapshots and for every restore
     pub lifecycle: Option<BtrfsLifecycle>,
 }
 
@@ -71,12 +57,9 @@ pub struct BtrfsLifecycle {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ResticConfig {
     pub repository: String,
-    /// The name of an envset in the daemon config: the environment variables restic needs for this repository
     pub envset: String,
-    /// restic forget --keep-*
     pub retention: ResticRetention,
     pub schedule: Option<String>,
-    /// What goes into every snapshot, absolute
     pub backup_paths: Vec<String>,
     pub lifecycle: ResticLifecycle,
 }
@@ -91,30 +74,24 @@ pub struct ResticRetention {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ResticLifecycle {
-    /// Before `restic backup`: quiesce, dump databases into one of the backup paths, …
     pub backup_prepare: Option<String>,
-    /// After the snapshot is in the repository, success or not: undo `backup_prepare`
     pub backup_release: Option<String>,
-    /// Given a staged download (`$BACRE_STAGING` mirrors the absolute paths): put it into
-    /// place. Absent: downloads can be inspected, not restored
+    /// `$BACRE_STAGING` holds the download, with the backed-up absolute paths underneath it
     pub restore_apply: Option<String>,
 }
 
-/// A parsed, valid file
 #[derive(Debug, Clone, PartialEq)]
 pub struct Entry {
     pub path: String,
     pub config: ServiceConfig,
 }
 
-/// A file that could not be used, and why
 #[derive(Debug, Clone, PartialEq)]
 pub struct Problem {
     pub path: String,
     pub message: String,
 }
 
-/// Reads a parsed bacre.yaml; on failure, every issue it has, each prefixed with its path
 pub fn parse(document: &Value) -> Result<ServiceConfig, Vec<String>> {
     let mut reader = Reader::default();
     let Some(root) = document.as_mapping() else {
@@ -143,7 +120,6 @@ pub fn parse(document: &Value) -> Result<ServiceConfig, Vec<String>> {
     }
 }
 
-/// A service's name ends up in paths and commands, hence the narrow alphabet
 pub fn is_service_name(name: &str) -> bool {
     let mut chars = name.chars();
     let allowed = |c: char| c.is_ascii_lowercase() || c.is_ascii_digit();
@@ -152,7 +128,6 @@ pub fn is_service_name(name: &str) -> bool {
 
 fn btrfs(reader: &mut Reader, map: &Mapping) -> Option<BtrfsConfig> {
     let subvolume = reader.string(map, "subvolume").filter(|subvolume| {
-        // an absolute path whose last part is named like @wiki
         let name = subvolume.rsplit('/').next().unwrap_or_default();
         let valid = subvolume.starts_with('/')
             && subvolume.matches('/').count() >= 2
@@ -254,7 +229,6 @@ fn restic(reader: &mut Reader, map: &Mapping) -> Option<ResticConfig> {
     })
 }
 
-/// Walks a document, remembering where it is and what is wrong
 #[derive(Default)]
 struct Reader {
     path: Vec<String>,
@@ -273,8 +247,7 @@ impl Reader {
         map.get(key).filter(|value| !value.is_null())
     }
 
-    /// A nested mapping, read by `read` with the path moved into it. The outer `None`
-    /// means the key is absent; a block that is there but wrong reports its own issues.
+    /// The outer `None`: the key is absent. `Some(None)`: there, but wrong (and reported).
     fn block<T>(
         &mut self,
         map: &Mapping,
@@ -292,7 +265,6 @@ impl Reader {
         Some(result)
     }
 
-    /// A required string
     fn string(&mut self, map: &Mapping, key: &str) -> Option<String> {
         match self.get(map, key) {
             Some(Value::String(text)) => Some(text.clone()),
@@ -314,7 +286,6 @@ impl Reader {
         !text.is_empty()
     }
 
-    /// A required absolute path
     fn absolute(&mut self, map: &Mapping, key: &str) -> Option<String> {
         self.string(map, key).filter(|path| {
             if !path.starts_with('/') {
@@ -324,7 +295,6 @@ impl Reader {
         })
     }
 
-    /// A list of strings; absent counts as empty, which `at_least` may then object to
     fn strings(&mut self, map: &Mapping, key: &str, at_least: usize) -> Option<Vec<String>> {
         let items = match self.get(map, key) {
             None => Vec::new(),
@@ -351,7 +321,6 @@ impl Reader {
         Some(texts)
     }
 
-    /// A list of absolute paths
     fn absolutes(&mut self, map: &Mapping, key: &str, at_least: usize) -> Option<Vec<String>> {
         let paths = self.strings(map, key, at_least)?;
         let mut valid = true;
@@ -364,7 +333,6 @@ impl Reader {
         valid.then_some(paths)
     }
 
-    /// A required whole number, zero or more
     fn count(&mut self, map: &Mapping, key: &str) -> Option<u32> {
         let number = self
             .get(map, key)
@@ -376,7 +344,6 @@ impl Reader {
         number
     }
 
-    /// A bash script; kept trimmed
     fn hook(&mut self, map: &Mapping, key: &str, required: bool) -> Option<String> {
         if !required && self.get(map, key).is_none() {
             return None;
@@ -385,7 +352,6 @@ impl Reader {
         self.non_empty(key, &script).then_some(script)
     }
 
-    /// An optional cron expression; kept trimmed
     fn schedule(&mut self, map: &Mapping) -> Option<String> {
         self.get(map, "schedule")?;
         let expression = self.string(map, "schedule")?.trim().to_string();

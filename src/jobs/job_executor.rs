@@ -1,5 +1,3 @@
-//! Turns a job request into backend calls.
-
 use std::sync::Arc;
 
 use super::job_service::Executor;
@@ -19,7 +17,6 @@ impl JobExecutor {
         Arc::new(Self { archive_service })
     }
 
-    /// In the form the job service takes
     pub fn executor(self: &Arc<Self>) -> Executor {
         let this = self.clone();
         Arc::new(move |request, log| {
@@ -32,7 +29,6 @@ impl JobExecutor {
         let ctx = self.archive_service.context();
         match request {
             Request::Backup(backup) => {
-                // every target has to be in the atlas before any of them is touched
                 let known = request
                     .services()
                     .into_iter()

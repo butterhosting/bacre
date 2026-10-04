@@ -6,10 +6,9 @@ use tokio::process::Command;
 
 use super::{Env, OnLine, Output, Shell, Stream};
 
-/// Spawns the commands. `env` is added to the daemon's own environment, never instead of it.
+/// `env` is added to the daemon's own environment, never instead of it.
 pub struct RealShell;
 
-/// What a command that could not even be started exits with, as a shell would
 const NOT_STARTED: i32 = 127;
 
 #[async_trait]
@@ -86,7 +85,6 @@ fn not_started(program: &str, reason: &str) -> Output {
     }
 }
 
-/// Hands over each line as it completes; what is printed last without a newline counts too
 async fn lines(reader: impl AsyncRead + Unpin, stream: Stream, on_line: OnLine<'_>) {
     let mut reader = BufReader::new(reader);
     let mut buffer = Vec::new();

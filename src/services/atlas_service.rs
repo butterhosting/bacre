@@ -1,7 +1,3 @@
-//! Finds and validates the `bacre.yaml` files the daemon config points at. Scanned at
-//! startup, on every refresh and every few seconds in between; no watcher, since a scan is
-//! a handful of small reads.
-
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::Arc;
@@ -88,13 +84,11 @@ impl AtlasService {
         scan
     }
 
-    /// Every file the patterns match, in order; a pattern without glob characters is a plain path
     fn locate(&self) -> BTreeSet<String> {
         let mut found = BTreeSet::new();
         for pattern in &self.config.services {
             if pattern.contains(['*', '?', '[', '{']) {
                 for pattern in expand_braces(pattern) {
-                    // a pattern that cannot be parsed matches nothing
                     for path in glob::glob(&pattern).into_iter().flatten().flatten() {
                         if path.is_file() {
                             found.insert(path.to_string_lossy().into_owned());
@@ -109,8 +103,7 @@ impl AtlasService {
     }
 }
 
-/// `a/{b,c}/d` → `a/b/d`, `a/c/d`; nested and repeated groups too. A brace without its
-/// partner is left as it is.
+/// `a/{b,c}/d` → `a/b/d`, `a/c/d`; nested groups too. A brace without its partner stays.
 fn expand_braces(pattern: &str) -> Vec<String> {
     let Some(open) = pattern.find('{') else {
         return vec![pattern.to_string()];

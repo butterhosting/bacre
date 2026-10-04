@@ -1,17 +1,8 @@
 import { z } from "zod/v4";
 import type { Archives } from "./Archives";
 
-/**
- * A job is one backup, download or restore running on the server. Jobs live in memory
- * only: the archives are the history, a job is just the act of adding to or reading from them.
- * This is the website's reading of what the server sends and accepts (the server's own
- * definition is in src/models/jobs.rs).
- *
- * Requests are discriminated per backend, so each backend declares exactly the options it
- * has (btrfs: hot or cold; restic: none) and a new backend does not compile without a variant.
- */
+/** The website's reading of what the server sends and accepts; the server's own definition is in src/models/jobs.rs */
 export namespace Jobs {
-  /** A snapshot's backend-specific identifier; it ends up in paths, hence the narrow alphabet and no leading dot */
   const Handle = z.string().regex(/^[A-Za-z0-9@_-][A-Za-z0-9@._-]*$/);
   const Service = z.string().regex(/^[a-z0-9][a-z0-9_-]*$/);
 
@@ -23,7 +14,6 @@ export namespace Jobs {
         .array(
           z.object({
             service: Service,
-            /** cold stops the service around the snapshot (needs `btrfs.lifecycle` in its bacre.yaml) */
             mode: z.enum(["hot", "cold"]),
           }),
         )
@@ -37,11 +27,6 @@ export namespace Jobs {
   ]);
   export type BackupRequest = z.infer<typeof BackupRequest>;
 
-  /**
-   * Fetching a snapshot into the staging directory, for the backends whose snapshots are
-   * not already on this machine. Restoring is a separate, later request, which leaves
-   * room to inspect what was downloaded.
-   */
   export const DownloadRequest = z.object({
     kind: z.literal("download"),
     backend: z.literal("restic"),
@@ -50,7 +35,6 @@ export namespace Jobs {
   });
   export type DownloadRequest = z.infer<typeof DownloadRequest>;
 
-  /** Putting a snapshot back in place of the live data: btrfs from its snapshot, restic from its staged download */
   export const RestoreRequest = z.discriminatedUnion("backend", [
     z.object({ kind: z.literal("restore"), backend: z.literal("btrfs"), service: Service, handle: Handle }),
     z.object({ kind: z.literal("restore"), backend: z.literal("restic"), service: Service, handle: Handle }),
@@ -69,7 +53,6 @@ export namespace Jobs {
 
   export const Line = z.object({
     at: z.iso.datetime({ offset: true }),
-    /** `info` is Bacre narrating, `out`/`err` is what the tools and hooks printed */
     stream: z.enum(["info", "out", "err"]),
     text: z.string(),
   });
@@ -78,7 +61,6 @@ export namespace Jobs {
   export const Status = z.enum(["running", "succeeded", "failed"]);
   export type Status = z.infer<typeof Status>;
 
-  /** Who started it: someone on the website, or the scheduler */
   const Trigger = z.enum(["manual", "schedule"]);
 
   export const Job = z.object({
@@ -90,7 +72,6 @@ export namespace Jobs {
     startedAt: z.iso.datetime({ offset: true }),
     endedAt: z.iso.datetime({ offset: true }).nullable(),
     error: z.string().nullable(),
-    /** The services known to have failed; a job can fail without knowing (empty) */
     failed: z.array(z.string()),
     lines: z.array(Line),
   });

@@ -1,0 +1,14 @@
+name: bacre-e2e
+
+services:
+  bacre:
+    build:
+      context: .
+      dockerfile: Dockerfile.e2e
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./config.e2e.yaml:/bacre/config.yaml:ro
+      - ./e2e/.sandbox:/bacre/.sandbox
+    stop_grace_period: 100ms

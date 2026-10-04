@@ -3,7 +3,6 @@ import type { ComponentProps } from "react";
 
 type Props = ComponentProps<"button"> & {
   primary?: boolean;
-  /** For a row of a list rather than a page header */
   small?: boolean;
   loading?: boolean;
 };

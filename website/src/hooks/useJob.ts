@@ -3,10 +3,6 @@ import { useEffect, useState } from "react";
 import { JobClient } from "../clients/JobClient";
 import { useRegistry } from "./useRegistry";
 
-/**
- * One job, followed live: the event stream replays what the job printed so far and keeps
- * delivering until `done`, so the page needs no separate fetch for the lines.
- */
 export function useJob(id: string): useJob.Result {
   const jobClient = useRegistry(JobClient);
   const [job, setJob] = useState<Jobs.Job>();

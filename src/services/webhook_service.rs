@@ -1,7 +1,3 @@
-//! Tells the configured webhook how every job ended: one POST per job, the same shape for
-//! all of them. Delivery is best effort (a few attempts, then a line in the daemon's log):
-//! the job's own outcome never depends on it.
-
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -16,13 +12,10 @@ use crate::models::jobs::{BackupRequest, Job, Request, Status, Trigger};
 
 const ATTEMPTS: u32 = 3;
 const TIMEOUT: Duration = Duration::from_secs(10);
-/// How much of the end of the job's log goes along
 const TAIL: usize = 15;
 
-/// The one thing the service needs from the network
 #[async_trait]
 pub trait Poster: Send + Sync {
-    /// The status code of the answer, or why there was none
     async fn post(
         &self,
         url: &str,
@@ -67,7 +60,6 @@ impl Poster for HttpPoster {
 pub struct WebhookService {
     config: Arc<Config>,
     poster: Box<dyn Poster>,
-    /// Between attempts: this long after the first, twice this after the second
     pause: Duration,
 }
 
@@ -131,7 +123,6 @@ impl WebhookService {
 
 #[derive(Debug, Serialize)]
 pub struct Payload {
-    /// `job_succeeded` or `job_failed`: the same word as the `X-Bacre-Event` header
     pub event: &'static str,
     pub host: String,
     pub job: JobPayload,
@@ -145,29 +136,22 @@ pub struct JobPayload {
     pub services: Vec<ServicePayload>,
     pub trigger: Trigger,
     pub status: Status,
-    /// Why it failed; null when it did not
     pub error: Option<String>,
     pub started: String,
     pub completed: String,
-    /// The last lines of the job's log, newline-separated
     pub tail: String,
 }
 
-/// A service the job was about, with whatever this kind of job and backend had to say about it
 #[derive(Debug, Serialize)]
 pub struct ServicePayload {
     pub name: String,
-    /// Whether this service is why the job failed. A job can fail before reaching any service: then none is marked
     pub failed: bool,
-    /// btrfs backups: hot or cold
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mode: Option<&'static str>,
-    /// Downloads and restores: the snapshot
     #[serde(skip_serializing_if = "Option::is_none")]
     pub snapshot: Option<String>,
 }
 
-/// Nothing for a job that is still running
 pub fn payload(job: &Job) -> Option<Payload> {
     let event = match job.status {
         Status::Running => return None,
@@ -202,7 +186,6 @@ pub fn payload(job: &Job) -> Option<Payload> {
 
 fn services(job: &Job) -> Vec<ServicePayload> {
     let failed = |service: &str| job.failed.iter().any(|failed| failed == service);
-    // one service, so its failure is the job's
     let single = |service: &str, handle: &str| {
         vec![ServicePayload {
             name: service.to_string(),
@@ -287,7 +270,6 @@ mod tests {
         body: String,
     }
 
-    /// A receiver that answers with the given statuses in turn and remembers what it was sent
     #[derive(Clone, Default)]
     struct Receiver {
         statuses: Vec<u16>,

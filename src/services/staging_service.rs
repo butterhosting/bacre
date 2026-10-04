@@ -1,7 +1,3 @@
-//! The staging directory: downloaded snapshots, one directory each, at
-//! `<stagingDir>/<service>/<handle>`. What is staged is whatever is on disk; nothing is
-//! remembered elsewhere, so a restart or a manual `rm` is reflected at once.
-
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
@@ -9,16 +5,14 @@ use chrono::{DateTime, Utc};
 use crate::config::Config;
 use crate::models::archives::{Backend, Staged, iso};
 
-/// A download in progress lives next to its final place under this suffix, and never counts as staged
+/// A download in progress lives under this suffix and never counts as staged
 pub const PARTIAL: &str = ".partial";
 
-/// Where a download of the service's snapshot is staged; nowhere on a daemon without restic
 pub fn dir(config: &Config, service: &str, handle: &str) -> Result<PathBuf, String> {
     Ok(config.restic()?.staging_dir.join(service).join(handle))
 }
 
 pub async fn list(config: &Config) -> Vec<Staged> {
-    // without restic, nothing is ever staged
     let Ok(restic) = config.restic() else {
         return Vec::new();
     };
@@ -42,7 +36,6 @@ pub async fn list(config: &Config) -> Vec<Staged> {
                 .unwrap_or_else(|_| Utc::now());
             staged.push(Staged {
                 service: service.clone(),
-                // restic is the only backend that stages; another one would record its name on disk
                 backend: Backend::Restic,
                 handle,
                 path: path.to_string_lossy().into_owned(),
@@ -55,7 +48,6 @@ pub async fn list(config: &Config) -> Vec<Staged> {
 }
 
 pub async fn discard(config: &Config, service: &str, handle: &str) -> std::io::Result<()> {
-    // without restic, nothing was ever staged
     let Ok(path) = dir(config, service, handle) else {
         return Ok(());
     };

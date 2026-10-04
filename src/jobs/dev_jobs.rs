@@ -1,6 +1,3 @@
-//! A succeeded and a failed job for the dev stage, so the jobs pages have something to show
-//! before you click. Made up: the jobs you start yourself run for real against the sandbox.
-
 use chrono::{Duration, Utc};
 
 use super::job_service::JobService;

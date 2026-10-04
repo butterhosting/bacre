@@ -1,9 +1,3 @@
-//! A job is one backup, download or restore running on the server. Jobs live in memory
-//! only: the archives are the history, a job is just the act of adding to or reading from them.
-//!
-//! Requests are shaped per backend, so each backend declares exactly the options it has
-//! (btrfs: hot or cold; restic: none).
-
 use serde::{Deserialize, Serialize};
 
 use crate::models::archives::Backend;
@@ -13,12 +7,7 @@ use crate::models::atlas::is_service_name;
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum Request {
     Backup(BackupRequest),
-    /// Fetching a snapshot into the staging directory, for the backends whose snapshots
-    /// are not already on this machine. Restoring is a separate, later request, which
-    /// leaves room to inspect what was downloaded.
     Download(DownloadRequest),
-    /// Putting a snapshot back in place of the live data: btrfs from its snapshot, restic
-    /// from its staged download
     Restore(RestoreRequest),
 }
 
@@ -32,7 +21,6 @@ pub enum BackupRequest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BtrfsTarget {
     pub service: String,
-    /// cold stops the service around the snapshot (needs `btrfs.lifecycle` in its bacre.yaml)
     pub mode: Mode,
 }
 
@@ -64,7 +52,6 @@ pub struct DownloadRequest {
     pub handle: String,
 }
 
-/// The backends whose snapshots have to be fetched before they can be restored
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DownloadBackend {
@@ -99,7 +86,6 @@ impl Request {
         }
     }
 
-    /// The services the request is about, in the order it names them
     pub fn services(&self) -> Vec<&str> {
         match self {
             Request::Backup(BackupRequest::Btrfs { targets }) => {
@@ -113,7 +99,6 @@ impl Request {
         }
     }
 
-    /// What the type system cannot say: at least one target, and names that are safe in paths
     pub fn validate(&self) -> Result<(), String> {
         let services = self.services();
         if services.is_empty() {
@@ -135,7 +120,6 @@ impl Request {
         }
     }
 
-    /// What the Jobs page shows
     pub fn title(&self) -> String {
         match self {
             Request::Backup(BackupRequest::Btrfs { targets }) => {
@@ -163,8 +147,7 @@ impl Request {
     }
 }
 
-/// A snapshot's backend-specific identifier; it ends up in paths, hence the narrow
-/// alphabet and no leading dot
+/// It ends up in paths, hence the narrow alphabet and no leading dot
 pub fn is_handle(handle: &str) -> bool {
     let allowed = |c: char| c.is_ascii_alphanumeric() || c == '@' || c == '_' || c == '-';
     let mut chars = handle.chars();
@@ -178,7 +161,6 @@ pub struct Line {
     pub text: String,
 }
 
-/// `info` is Bacre narrating, `out`/`err` is what the tools and hooks printed
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum LineStream {
@@ -195,7 +177,6 @@ pub enum Status {
     Failed,
 }
 
-/// Who started it: someone on the website, or the scheduler
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Trigger {
@@ -214,12 +195,10 @@ pub struct Job {
     pub started_at: String,
     pub ended_at: Option<String>,
     pub error: Option<String>,
-    /// The services known to have failed; a job can fail without knowing (empty)
     pub failed: Vec<String>,
     pub lines: Vec<Line>,
 }
 
-/// A job without its lines, for the list
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Summary {
@@ -250,7 +229,6 @@ impl From<&Job> for Summary {
     }
 }
 
-/// What a job's event stream carries
 #[derive(Debug, Clone, PartialEq)]
 pub enum Event {
     Line(Line),

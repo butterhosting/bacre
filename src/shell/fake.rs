@@ -9,11 +9,7 @@ use serde_json::json;
 
 use super::{Env, OnLine, Output, Shell, Stream};
 
-/// Stands in for btrfs, btrbk, restic and bash on a machine that has none of them: all of
-/// them for the tests, btrfs and btrbk for the dev stage (see `SandboxShell`). It recognises
-/// the exact invocations the backends make and answers in their output formats, with enough
-/// variety to exercise every state the website can show. Backups it "runs" show up in later
-/// listings, so the dev loop feels like the real thing.
+/// Answers the exact invocations the backends make, in their tools' output formats.
 #[derive(Default)]
 pub struct FakeShell {
     state: Mutex<State>,
@@ -26,15 +22,11 @@ struct State {
     initialized_repos: HashSet<String>,
 }
 
-// A made-up machine, matching the services the sandbox is seeded with: nothing here is named after a real deployment
 const SERVICES: [&str; 8] = [
     "dns", "gallery", "ledger", "mailbox", "radio", "recipes", "tracker", "wiki",
 ];
-/// No restic repository at all
 const LOCAL_ONLY: [&str; 3] = ["dns", "radio", "recipes"];
-/// The repository listing fails
 const BROKEN: [&str; 1] = ["gallery"];
-/// Offsite backups stopped nine days ago
 const STALE: [&str; 1] = ["ledger"];
 const LIVE: &str = "/srv/demo/disk-a";
 const DUMPS: &str = "/srv/demo/dumps";
@@ -87,7 +79,6 @@ impl Shell for FakeShell {
 }
 
 impl FakeShell {
-    /// `btrfs subvolume list -s <dir>`: one line per snapshot subvolume
     fn btrfs(&self, cmd: &[String]) -> Output {
         let dir = cmd.last().map(String::as_str).unwrap_or_default();
         let verb = (
@@ -130,7 +121,6 @@ impl FakeShell {
         output(0, &(lines.join("\n") + "\n"), "")
     }
 
-    /// `restic -r <repo> … snapshots --json` / `cat config` / `init`
     async fn restic(&self, cmd: &[String]) -> Output {
         let repo = after(cmd, "-r");
         let service = repo.rsplit('/').next().unwrap_or_default().to_string();
@@ -196,7 +186,6 @@ impl FakeShell {
         output(0, &serde_json::Value::Array(snapshots).to_string(), "")
     }
 
-    /// `bash -euo pipefail -c <script>`: echoes each line as bash -x would, and "runs" it
     async fn bash(&self, cmd: &[String], on_line: OnLine<'_>) -> i32 {
         // a trailing backslash continues the command on the next line, as it does for the real bash
         let script = join_continuations(after(cmd, "-c"));
@@ -224,7 +213,6 @@ impl FakeShell {
         0
     }
 
-    /// `btrbk -c <config> run <subvolume…>`: narrates a snapshot + send/receive per subvolume
     async fn btrbk(&self, cmd: &[String], on_line: OnLine<'_>) -> i32 {
         let subvolumes = cmd.iter().skip_while(|part| *part != "run").skip(1);
         let now = Local::now();
@@ -233,7 +221,6 @@ impl FakeShell {
             Stream::Out,
             "Backup Summary (btrbk command line client, version 0.32.6)",
         );
-        // where the snapshot goes and where it is sent, as the generated configuration says
         let config = tokio::fs::read_to_string(after(cmd, "-c"))
             .await
             .unwrap_or_default();
@@ -271,7 +258,6 @@ impl FakeShell {
         0
     }
 
-    /// `btrfs subvolume snapshot <src> <dst>` and `btrfs subvolume delete <path>`, as the restore runs them
     async fn btrfs_streaming(&self, cmd: &[String], on_line: OnLine<'_>) -> i32 {
         pause(300, 500).await;
         let arg = |index: usize| cmd.get(index).map(String::as_str).unwrap_or_default();
@@ -297,7 +283,6 @@ impl FakeShell {
         }
     }
 
-    /// `restic … restore <id> --target <dir>`: really creates the directory, with a small tree under the absolute paths
     async fn restic_restore(&self, cmd: &[String], service: &str, on_line: OnLine<'_>) -> i32 {
         let target = Path::new(after(cmd, "--target"));
         let id = after(cmd, "restore");
@@ -347,7 +332,6 @@ impl FakeShell {
         0
     }
 
-    /// `restic -r <repo> … backup <paths…>` and `forget --prune`
     async fn restic_streaming(&self, cmd: &[String], on_line: OnLine<'_>) -> i32 {
         let repo = after(cmd, "-r");
         let service = repo.rsplit('/').next().unwrap_or_default();
@@ -421,7 +405,6 @@ fn broken(repo: &str) -> String {
     )
 }
 
-/// The argument that follows `flag`, or nothing
 fn after<'a>(cmd: &'a [String], flag: &str) -> &'a str {
     cmd.iter()
         .position(|part| part == flag)
@@ -430,7 +413,6 @@ fn after<'a>(cmd: &'a [String], flag: &str) -> &'a str {
         .unwrap_or_default()
 }
 
-/// A backslash at the end of a line, and the indentation of the next, removed
 fn join_continuations(script: &str) -> String {
     let mut joined = String::new();
     let mut rest = script;
@@ -442,7 +424,6 @@ fn join_continuations(script: &str) -> String {
     joined
 }
 
-/// Waits `base` milliseconds and up to `jitter` more, so the output arrives unevenly
 async fn pause(base: u64, jitter: u64) {
     let extra = if jitter == 0 {
         0
@@ -461,7 +442,6 @@ fn days_ago(days: i64, hour: u32, minute: u32) -> DateTime<Local> {
     wall(Local::now() - chrono::Duration::days(days), hour, minute, 4)
 }
 
-/// The same day as `day`, at the given time on the clock
 fn wall(day: DateTime<Local>, hour: u32, minute: u32, second: u32) -> DateTime<Local> {
     let naive = day
         .date_naive()
@@ -470,12 +450,10 @@ fn wall(day: DateTime<Local>, hour: u32, minute: u32, second: u32) -> DateTime<L
     Local.from_local_datetime(&naive).earliest().unwrap_or(day)
 }
 
-/// btrbk's snapshot stamp, local time: 20261001T0305
 fn stamp(time: DateTime<Local>) -> String {
     time.format("%Y%m%dT%H%M").to_string()
 }
 
-/// A stable 8-hex id from a seed, so refreshes return the same snapshots
 fn hex(seed: &str) -> String {
     // FNV-1a: small, and the same on every run and machine
     let hash = seed.bytes().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {

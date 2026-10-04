@@ -74,7 +74,6 @@ namespace Internal {
 
   type ServiceRowProps = {
     service: Archives.Service;
-    /** The downloads waiting in the staging directory for this service */
     staged: Archives.Staged[];
   };
   /** The whole row opens the service; the name stays a real link so it is reachable by keyboard */
@@ -98,7 +97,6 @@ namespace Internal {
     );
   }
 
-  /** A quiet reminder that a download is sitting in the staging directory, waiting to be restored or discarded */
   function StagedPill({ count }: { count: number }) {
     if (count === 0) {
       return null;

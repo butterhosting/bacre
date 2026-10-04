@@ -1,6 +1,4 @@
-# The Linux binaries are linked by the linker that ships with Rust, against the musl C
-# library that ships with the target's standard library: no C toolchain needed, from any
-# machine, as long as every dependency is pure Rust.
+# no C toolchain needed for the Linux binaries, as long as every dependency is pure Rust
 
 [target.x86_64-unknown-linux-musl]
 linker = "rust-lld"

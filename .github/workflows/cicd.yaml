@@ -32,8 +32,6 @@ jobs:
       - name: "Application :: Inspect Binaries"
         run: file dist/*
 
-      # The runner is an amd64 Linux machine, so that binary can be run right here: as in
-      # production, with nothing to back up (the dev stage needs restic, which the runner lacks)
       - name: "Application :: Smoke Test"
         run: |
           ./dist/bacre-linux-amd64 --version

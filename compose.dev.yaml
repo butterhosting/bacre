@@ -1,4 +1,4 @@
-# `just dev`: the website and the Rust server, each in its own container, both following your edits
+name: bacre-dev
 
 services:
   website:
@@ -14,15 +14,14 @@ services:
       - "3000:3000"
     volumes:
       - ./website:/app
-      # the container's own install, not the host's
+      # the container's own node_modules, not the host's
       - /app/node_modules
-    networks:
-      - app-network
     stop_grace_period: 100ms
 
   bacre:
     build:
-      context: ./docker/bacre-dev
+      context: .
+      dockerfile: Dockerfile.dev
     # umask 0: what one user builds into the volumes, the next one (another HOST_UID) can build over
     command: sh -c 'umask 0000 && exec cargo watch --quiet --watch src --watch Cargo.toml --watch build.rs --exec "run -- config.dev.yaml"'
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
@@ -30,19 +29,13 @@ services:
       - "3001:3001"
     volumes:
       - .:/app
-      # Linux build output and crate downloads, kept between runs and apart from the host's own
       - cargo-target:/cargo-target
       - cargo-registry:/usr/local/cargo/registry
-      # the host's clock zone: schedules are written in local time, and so are snapshot names
+      # schedules and snapshot names are in local time
       - /etc/localtime:/etc/localtime:ro
-    networks:
-      - app-network
     stop_grace_period: 100ms
 
 volumes:
   cargo-target:
   cargo-registry:
 
-networks:
-  app-network:
-    driver: bridge

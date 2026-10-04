@@ -12,7 +12,6 @@ export class ClientRegistry {
 
   private constructor(
     yesttp: Yesttp,
-    /** What the server said about itself when the page started */
     public readonly env: Env.Type,
   ) {
     this.registry[Yesttp.name] = yesttp;
@@ -22,13 +21,8 @@ export class ClientRegistry {
     this.registry[RestrictedClient.name] = new RestrictedClient(yesttp);
   }
 
-  /**
-   * Asks the server which build it is before anything renders, and says so in the console.
-   * It is also the first request behind the login, so a browser that has to ask for a
-   * password asks here.
-   */
+  /** The first request behind the login, so a browser that has to ask for a password asks here */
   public static async bootstrap(): Promise<ClientRegistry> {
-    // Frontend and backend are served from the same origin, so a relative base is all the configuration there is
     const yesttp = new Yesttp({ baseUrl: "/api" });
     const { json } = await yesttp.get<unknown>("/env");
     const env = Env.parse(json);

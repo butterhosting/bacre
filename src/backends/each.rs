@@ -3,9 +3,6 @@ use std::future::Future;
 use crate::failure::{Failure, Outcome};
 use crate::jobs::log::Log;
 
-/// Runs `one` for every target. A target that fails is reported and the rest still run, so
-/// one broken service does not cost the others their nightly backup; the job fails at the
-/// end, naming them.
 pub async fn each<'a, T, F>(
     targets: &'a [T],
     service: impl Fn(&T) -> &str,

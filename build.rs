@@ -1,18 +1,11 @@
-//! Two things the server needs at compile time: a `website/dist` folder to embed, and the
-//! version and commit it is built from.
-
 use std::process::Command;
 
 fn main() {
-    // The website is embedded from `website/dist`, which `just build` fills first. The
-    // folder has to exist for the server to compile at all, so a checkout that has not built
-    // the website yet (every `cargo run` during development) gets an empty one.
+    // the folder has to exist to compile at all; `just build` fills it, `cargo run` leaves it empty
     std::fs::create_dir_all("website/dist").expect("could not create website/dist");
-    // a rebuilt website is embedded into the next build of the server
     println!("cargo:rerun-if-changed=website/dist");
 
-    // A pipeline can state both; otherwise git is asked, the way a release would be cut:
-    // the tag the commit carries, else the closest tag marked as a snapshot, else 0.0.0.
+    // the tag the commit carries, else the closest tag marked as a snapshot, else 0.0.0
     println!("cargo:rerun-if-env-changed=BACRE_VERSION");
     println!("cargo:rerun-if-env-changed=BACRE_COMMIT");
     println!("cargo:rerun-if-changed=.git/HEAD");
@@ -37,7 +30,6 @@ fn main() {
     println!("cargo:rustc-env=BACRE_VERSION={version}");
 }
 
-/// The trimmed output of a git command, or nothing when it fails or prints nothing
 fn git(args: &[&str]) -> Option<String> {
     let output = Command::new("git").args(args).output().ok()?;
     if !output.status.success() {

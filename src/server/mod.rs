@@ -1,6 +1,5 @@
-//! The routes: an API under `/api` behind the login, and the website for everything else.
-//! The page itself is public and the data behind it is not; a browser asks for the
-//! password on the API's 401.
+//! The page itself is public and the data behind it is not: a browser asks for the password
+//! on the API's 401.
 
 mod auth;
 mod website;
@@ -33,14 +32,12 @@ use crate::services::sandbox_service::{Refusal, SandboxService};
 use crate::services::scheduler::Scheduler;
 use crate::services::staging_service;
 
-/// Everything a request handler can reach
 pub struct App {
     pub config: Arc<Config>,
     pub archive_service: Arc<ArchiveService>,
     pub job_service: Arc<JobService>,
     pub scheduler: Arc<Scheduler>,
     pub change_service: Arc<ChangeService>,
-    /// Only in the dev stage, with a sandbox configured
     pub sandbox: Option<Arc<SandboxService>>,
 }
 
@@ -87,7 +84,6 @@ async fn favicon() -> Response {
     ([(header::CONTENT_TYPE, "image/svg+xml")], FAVICON).into_response()
 }
 
-/// What the server says about itself: which build it is, and how it runs
 #[derive(Serialize)]
 struct Env {
     stage: &'static str,
@@ -103,7 +99,6 @@ async fn env(State(app): State<Arc<App>>) -> Json<Env> {
     })
 }
 
-/// The cached listings, plus what is in the staging directory and on the schedule right now
 async fn archives(State(app): State<Arc<App>>) -> Json<Archives> {
     app.archive_service.refresh_if_stale();
     let view = app.archive_service.view();
@@ -117,8 +112,6 @@ async fn archives(State(app): State<Arc<App>>) -> Json<Archives> {
     })
 }
 
-/// Server-sent events: `changed` whenever a page's data may look different, and a comment
-/// now and then to keep the connection alive
 async fn changes(
     State(app): State<Arc<App>>,
 ) -> Sse<impl Stream<Item = Result<SseEvent, Infallible>>> {
@@ -185,7 +178,6 @@ async fn job(State(app): State<Arc<App>>, Path(id): Path<String>) -> Response {
     }
 }
 
-/// Restricted (never in production): fills the sandbox with made-up services
 async fn seed(State(app): State<Arc<App>>) -> Response {
     match &app.sandbox {
         Some(sandbox) => restricted(sandbox.seed().await),
@@ -193,7 +185,6 @@ async fn seed(State(app): State<Arc<App>>) -> Response {
     }
 }
 
-/// Restricted (never in production): empties the sandbox
 async fn purge(State(app): State<Arc<App>>) -> Response {
     match &app.sandbox {
         Some(sandbox) => restricted(sandbox.purge().await),
@@ -220,7 +211,6 @@ fn restricted(result: Result<(), Refusal>) -> Response {
     }
 }
 
-/// Server-sent events: the job's lines so far, then live, then `done`
 async fn job_events(State(app): State<Arc<App>>, Path(id): Path<String>) -> Response {
     let Some(receiver) = app.job_service.subscribe(&id) else {
         return problem(StatusCode::NOT_FOUND, "job_not_found");
@@ -248,7 +238,6 @@ pub mod testing {
     use crate::services::atlas_service::AtlasService;
     use crate::shell::FakeShell;
 
-    /// The whole daemon over the fake shell, with the atlas and staging in a directory of the test's
     pub fn app(dir: &std::path::Path, extra: &str) -> Arc<App> {
         let config = Arc::new(
             Config::parse(&format!(
@@ -571,7 +560,6 @@ mod tests {
                 .is_file()
         );
 
-        // downloading it again is refused by the job, not by the request
         call(&daemon.app, Method::POST, "/api/jobs", Some(download)).await;
         daemon.app.job_service.settled().await;
         let (_, jobs) = get(&daemon.app, "/api/jobs").await;

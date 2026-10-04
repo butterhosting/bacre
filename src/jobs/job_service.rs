@@ -1,6 +1,3 @@
-//! Runs one job at a time and keeps the recent ones in memory, so a page can follow a job
-//! live or come back to it later. Nothing is persisted: the archives are the history.
-
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -13,20 +10,16 @@ use crate::failure::Outcome;
 use crate::models::archives::iso;
 use crate::models::jobs::{Event, Job, Line, LineStream, Request, Status, Summary, Trigger};
 
-/// Turns a job request into the work it stands for
 pub type Executor =
     Arc<dyn Fn(Request, Log) -> Pin<Box<dyn Future<Output = Outcome> + Send>> + Send + Sync>;
 
-/// Another job is still running
 #[derive(Debug, Clone, PartialEq)]
 pub struct Busy {
     pub job_id: String,
 }
 
-/// Callbacks registered while the daemon is wired together
 type Listeners<F> = Mutex<Vec<Box<F>>>;
 
-/// How many jobs are remembered
 const KEEP: usize = 50;
 
 pub struct JobService {
@@ -40,17 +33,13 @@ pub struct JobService {
 
 #[derive(Default)]
 struct State {
-    /// In the order they were started
     jobs: Vec<Tracked>,
     running: Option<String>,
-    /// Someone is rearranging the sandbox (seed, purge): no job may start meanwhile
     held: bool,
 }
 
-/// What a refused start says while the sandbox is being seeded or purged
 pub const HELD: &str = "sandbox";
 
-/// Keeps every job from starting for as long as it lives
 pub struct Hold {
     service: Arc<JobService>,
 }
@@ -80,7 +69,6 @@ impl JobService {
         })
     }
 
-    /// Starts the job and returns at once; refuses while another job runs
     pub fn start(self: &Arc<Self>, request: Request, trigger: Trigger) -> Result<Job, Busy> {
         let job = {
             let mut state = self.state.lock().unwrap();
@@ -137,7 +125,6 @@ impl JobService {
         state.running.is_none() && !state.held
     }
 
-    /// Keeps jobs from starting until the hold is dropped; refused while one runs
     pub fn hold(self: &Arc<Self>) -> Result<Hold, Busy> {
         let mut state = self.state.lock().unwrap();
         if let Some(job_id) = state.running.clone() {
@@ -154,35 +141,28 @@ impl JobService {
         })
     }
 
-    /// Forgets every job (a purged sandbox has no history). Only while held, so none runs.
     pub fn forget_all(&self, _hold: &Hold) {
         self.state.lock().unwrap().jobs.clear();
         self.tell(&self.on_changed);
     }
 
-    /// Called whenever the list of jobs looks different: one started, one ended
     pub fn on_changed(&self, listener: impl Fn() + Send + Sync + 'static) {
         self.on_changed.lock().unwrap().push(Box::new(listener));
     }
 
-    /// Called with every job that ends, whatever started it and however it went
     pub fn on_finished(&self, listener: impl Fn(&Job) + Send + Sync + 'static) {
         self.on_finished.lock().unwrap().push(Box::new(listener));
     }
 
-    /// Called every time a job ends, once the runner is free again
     pub fn on_idle(&self, listener: impl Fn() + Send + Sync + 'static) {
         self.on_idle.lock().unwrap().push(Box::new(listener));
     }
 
-    /// Returns when no job runs (at once, when none does)
     pub async fn settled(&self) {
         let mut idle = self.idle.subscribe();
-        // the sender lives as long as the service, so this cannot fail
         let _ = idle.wait_for(|idle| *idle).await;
     }
 
-    /// Adds a finished job as if it had run here (the dev stage's sample data)
     pub fn seed(&self, job: Job) {
         self.state.lock().unwrap().jobs.push(Tracked {
             job,
@@ -190,7 +170,6 @@ impl JobService {
         });
     }
 
-    /// Newest first, without their lines
     pub fn list(&self) -> Vec<Summary> {
         let state = self.state.lock().unwrap();
         let mut jobs: Vec<Summary> = state
@@ -211,9 +190,7 @@ impl JobService {
             .map(|tracked| tracked.job.clone())
     }
 
-    /// Everything the job has printed so far, and then what it prints until it ends, in one
-    /// stream that closes after `Done`. Taken under the lock, so no line can slip between
-    /// the replay and the live feed. Nothing for a job that is not known.
+    /// Taken under the lock, so no line can slip between the replay and the live feed.
     pub fn subscribe(&self, id: &str) -> Option<mpsc::UnboundedReceiver<Event>> {
         let mut state = self.state.lock().unwrap();
         let tracked = state.jobs.iter_mut().find(|tracked| tracked.job.id == id)?;
@@ -299,7 +276,6 @@ fn append(tracked: &mut Tracked, stream: LineStream, text: String) {
     tracked.job.lines.push(line);
 }
 
-/// Forgets the oldest finished jobs beyond the cap
 fn trim(state: &mut State) {
     while state.jobs.len() > KEEP {
         let oldest = state
@@ -327,13 +303,11 @@ pub mod testing {
     use super::*;
     use crate::failure::Failure;
 
-    /// An executor the test drives by hand
     #[derive(Clone, Default)]
     pub struct Controllable {
         current: Arc<Mutex<Option<Running>>>,
     }
 
-    /// How to end the running job, and where it writes
     type Running = (oneshot::Sender<Outcome>, Log);
 
     impl Controllable {
@@ -473,7 +447,6 @@ mod tests {
             events(&mut receiver),
             vec!["one", "two", "==> Done", "done:Succeeded"]
         );
-        // the stream is closed once the job is done
         assert!(receiver.recv().await.is_none());
     }
 
@@ -624,7 +597,6 @@ mod tests {
         let before = freed.load(Ordering::SeqCst);
         drop(hold);
         assert!(service.idle());
-        // released like a job that ended, so whatever waits can go
         assert_eq!(freed.load(Ordering::SeqCst), before + 1);
         assert!(service.start(request(Mode::Hot), Trigger::Manual).is_ok());
     }

@@ -1,27 +1,18 @@
-# `just dev`: Bacre in its dev stage, on a sandbox of made-up services with real files and
-# real restic repositories (btrfs is faked: a container has none). The sandbox is seeded on
-# the first start; the Seed and Purge buttons in the sidebar redo or empty it.
-# kim:possible can log in; an empty `users` turns the login off.
-# Paths are relative to this file; everything the dev stage writes stays in .sandbox/.
 stage: dev
 server:
-  # every interface: the website reaches it from another container
   bind: 0.0.0.0
   port: 3001
 services:
   - .sandbox/services/*/bacre.yaml
 users:
+  # kim:possible
   - kim:$2y$05$O6pLpHgLgQV1PSlzzLGGNuMp205RBZyqfdHO0XGoJ4EmeTL9ZaReO
 envsets:
-  # what the seeded repositories are created with
   demo:
     RESTIC_PASSWORD: demo
-  # for the one service whose repository should fail to open
+  # for the one service whose repository should not open
   demo-wrong-password:
     RESTIC_PASSWORD: not-the-password
-# webhook:
-#   url: http://127.0.0.1:9000/hooks/bacre
-#   secret: dev
 sandbox: .sandbox
 tmpDir: .sandbox/tmp
 backends:

@@ -12,7 +12,6 @@ export function jobsPage() {
   useDocumentTitle("Jobs · Bacre");
   const jobs = useJobs();
 
-  // the elapsed time of a running job ticks; the list itself arrives by push
   const running = jobs?.some((job) => job.status === "running") ?? false;
   const [, tick] = useState(0);
   useEffect(() => {

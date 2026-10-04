@@ -1,6 +1,3 @@
-//! How a job, or a step of one, fails: a message for the log and the notification, and the
-//! services known to be the reason (a job can fail without knowing which: then none).
-
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]

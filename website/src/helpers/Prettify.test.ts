@@ -48,7 +48,6 @@ describe("Prettify", () => {
     const start = local(2026, 10, 3, 1, 0);
     const after = (seconds: number) => Prettify.duration(iso(start), iso(new Date(start.getTime() + seconds * 1000)));
     expect([after(41), after(127), after(3600 + 12 * 60 + 5)]).toEqual(["41 s", "2:07", "1:12:05"]);
-    // still running: measured against now, and never negative
     expect(Prettify.duration(iso(start), null, new Date(start.getTime() + 5000))).toBe("5 s");
     expect(Prettify.duration(iso(start), null, new Date(start.getTime() - 5000))).toBe("0 s");
   });

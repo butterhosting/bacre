@@ -1,8 +1,3 @@
-//! Restic restores in two separate steps. `download` fetches a snapshot into the staging
-//! directory and stops there, so it can be looked at over SSH. `restore` hands that staged
-//! directory to the service's own `restoreApply` hook, which is the whole restore: Bacre
-//! does not know, and does not need to know, what putting the data back involves.
-
 use std::path::Path;
 
 use super::{Context, hooks, restic};

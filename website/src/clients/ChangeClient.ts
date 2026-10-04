@@ -1,14 +1,8 @@
-/**
- * The server says when something changed (a job started or ended, a listing came in), and
- * the pages fetch again: one event stream for the whole website, shared by every hook.
- * The browser reconnects a dropped stream by itself; whatever happened in between is
- * covered by telling the listeners on every (re)connect.
- */
+/** The browser reconnects a dropped stream by itself; the listeners are told on every reconnect, to cover what happened in between */
 export class ChangeClient {
   private readonly listeners = new Set<() => void>();
   private source: EventSource | undefined;
 
-  /** Calls `listener` on every change until the returned function is called */
   public subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
     this.source ??= this.connect();

@@ -1,11 +1,6 @@
-//! Runs the backups the atlas schedules. A due backup is a (backend, service) pair waiting
-//! in a set, so it can wait at most once however long the runner stays busy; whenever the
-//! runner is free, everything waiting for one backend goes out as a single job.
-//!
-//! Nothing is persisted. What was missed while the daemon was down is read off the
-//! archives at startup: a backend whose newest snapshot predates its last due moment gets
-//! one run. A backend with no snapshots, or one that could not be listed, is left to its
-//! next regular slot.
+//! A due backup waits in a set of (backend, service) pairs, so however long the runner stays
+//! busy it waits at most once. At startup, a backend whose newest snapshot predates its last
+//! due moment gets one catch-up run; one without snapshots, or that could not be listed, waits.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
@@ -20,19 +15,15 @@ use crate::models::archives::{Backend, BackendState, Schedule, Service, iso};
 use crate::models::atlas::Entry;
 use crate::models::jobs::{BackupRequest, BtrfsTarget, Mode, Request, ResticTarget, Trigger};
 
-/// How often the clock is looked at
 const CHECK: Duration = Duration::from_secs(20);
 
-/// What the scheduler reads: the atlas, and what the last listing found
 pub trait Atlas: Send + Sync {
     fn entries(&self) -> Vec<Entry>;
     fn services(&self) -> Vec<Service>;
 }
 
-/// What the scheduler drives
 pub trait Runner: Send + Sync {
     fn idle(&self) -> bool;
-    /// Only called when idle
     fn start(&self, request: Request);
 }
 
@@ -60,7 +51,6 @@ impl Runner for Arc<JobService> {
 pub struct Scheduler {
     atlas: Arc<dyn Atlas>,
     runner: Box<dyn Runner>,
-    /// Now, in the zone the schedules are written in: the machine's own
     now: Box<dyn Fn() -> DateTime<Local> + Send + Sync>,
     state: Mutex<State>,
 }
@@ -100,7 +90,6 @@ impl Scheduler {
         })
     }
 
-    /// Call once the first listing is in: the catch-up reads it
     pub fn start(self: &Arc<Self>) {
         self.state.lock().unwrap().last_checked = (self.now)();
         self.catch_up();
@@ -119,17 +108,14 @@ impl Scheduler {
         self.drain();
     }
 
-    /// Nothing new starts from here on; a running job is not touched
     pub fn stop(&self) {
         self.state.lock().unwrap().stopped = true;
     }
 
-    /// Drops whatever is waiting to run: the services it was for have just been purged
     pub fn forget_waiting(&self) {
         self.state.lock().unwrap().waiting.clear();
     }
 
-    /// Queues whatever became due since the last check
     pub fn check(&self) {
         let now = (self.now)();
         let last_checked = std::mem::replace(&mut self.state.lock().unwrap().last_checked, now);
@@ -145,7 +131,6 @@ impl Scheduler {
         self.drain();
     }
 
-    /// Every schedule in the atlas, with its next moment
     pub fn list(&self) -> Vec<Schedule> {
         let now = (self.now)();
         let state = self.state.lock().unwrap();
@@ -167,8 +152,6 @@ impl Scheduler {
             .collect()
     }
 
-    /// Starts one job for the first backend that has anything waiting. Called after a check,
-    /// and by the job service every time it becomes free.
     pub fn drain(&self) {
         let request = {
             let mut state = self.state.lock().unwrap();
@@ -257,7 +240,6 @@ impl Scheduler {
         let mut scheduled = Vec::new();
         for entry in self.atlas.entries() {
             for backend in Backend::ALL {
-                // the atlas only lets valid expressions through
                 if let Some(cron) = entry
                     .config
                     .schedule(backend)
@@ -275,7 +257,6 @@ impl Scheduler {
     }
 }
 
-/// What a scheduled run asks of each backend
 fn request(backend: Backend, mut services: Vec<String>) -> Request {
     services.sort();
     Request::Backup(match backend {
@@ -353,13 +334,11 @@ mod tests {
         }
     }
 
-    /// A world with a clock, an atlas and a runner the test drives by hand
     struct World {
         fakes: Arc<Fakes>,
         scheduler: Arc<Scheduler>,
     }
 
-    /// A time on the clock here
     fn at(text: &str) -> DateTime<Local> {
         cron::local(NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M:%S").unwrap())
     }
@@ -454,25 +433,21 @@ mod tests {
     }
 
     impl World {
-        /// What `Scheduler::start` does, minus the timer
         fn start(&self) {
             self.scheduler.catch_up();
             self.scheduler.drain();
         }
 
-        /// Moves the clock and lets the scheduler look at it
         fn at(&self, time: &str) {
             *self.fakes.now.lock().unwrap() = at(time);
             self.scheduler.check();
         }
 
-        /// The running job ends
         fn finish(&self) {
             self.fakes.idle.store(true, Ordering::SeqCst);
             self.scheduler.drain();
         }
 
-        /// Someone starts a job by hand
         fn occupy(&self) {
             self.fakes.idle.store(false, Ordering::SeqCst);
         }

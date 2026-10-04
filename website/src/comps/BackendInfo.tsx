@@ -4,10 +4,8 @@ import { Prettify } from "../helpers/Prettify";
 
 type Props = {
   info: Archives.BackendInfo;
-  /** Absent when the service's bacre.yaml gives this backend no schedule */
   schedule: Archives.Schedule | undefined;
 };
-/** What a backend knows about a service, as a list of facts; a new backend does not compile without a case */
 export function BackendInfo({ info, schedule }: Props) {
   switch (info.backend) {
     case "btrfs":
@@ -94,7 +92,6 @@ namespace Internal {
     );
   }
 
-  /** When Bacre backs this up by itself, and when that is next */
   export function Schedule({ schedule }: Pick<Props, "schedule">) {
     return (
       <Fact label="schedule">
@@ -118,7 +115,6 @@ namespace Internal {
     icon: ReactNode;
     children: ReactNode;
   };
-  /** A small labelled box after a value: an icon saying what it is, then the thing itself */
   function Tag({ title, icon, children }: TagProps) {
     return (
       <span
@@ -132,7 +128,6 @@ namespace Internal {
     );
   }
 
-  /** A solid clock face with light hands, the same weight as the envset tag's boxed E */
   function Clock() {
     return (
       <svg viewBox="0 0 12 12" aria-hidden className="size-[13px] shrink-0">
@@ -142,7 +137,6 @@ namespace Internal {
     );
   }
 
-  /** The envset a backend runs with: a small tag, marked with a boxed E for "environment" */
   export function Envset({ name }: { name: string }) {
     return (
       <Tag
@@ -164,10 +158,8 @@ namespace Internal {
 
   type Block = {
     name: string;
-    /** Shown exactly as the bacre.yaml declares it; a block without text is left out */
     text?: string;
   };
-  /** Titled boxes of monospaced text: the hooks that run, the paths that are read and written */
   export function Blocks({ blocks }: { blocks: Block[] }) {
     return (
       <div className="flex flex-col gap-2">

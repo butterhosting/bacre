@@ -1,9 +1,4 @@
-/**
- * The development server for the website: the page with hot reload on :3000, and every
- * API call passed on to the Rust server, so the page talks to one origin just as it does
- * once it is served from inside the binary. In the compose setup the Rust server is
- * another container, which the environment says.
- */
+/** Hot reload on :3000, and /api passed on to the Rust server: one origin, as in production */
 import index from "./index.html";
 
 const BACKEND = process.env.BACRE_BACKEND ?? "http://127.0.0.1:3001";
@@ -23,7 +18,6 @@ const server = Bun.serve({
         return Response.json({ error: "backend_unreachable", backend: BACKEND }, { status: 502 });
       }
     },
-    // the stable path the Rust server serves it at too
     "/favicon.svg": Bun.file("./src/images/favicon.svg"),
     "/*": index,
   },

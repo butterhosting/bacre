@@ -1,11 +1,7 @@
 import tailwind from "bun-plugin-tailwind";
 import { rm } from "fs/promises";
 
-/**
- * Builds the website into dist/, which the Rust server embeds. A build script rather than
- * the `bun build` CLI, because the Tailwind plugin can only be passed through Bun.build()
- * (bunfig's [serve.static] covers the dev server only).
- */
+/** A script rather than the `bun build` CLI: the Tailwind plugin can only be passed through Bun.build() */
 await rm("./dist", { recursive: true, force: true });
 
 const result = await Bun.build({

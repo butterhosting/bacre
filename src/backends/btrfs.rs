@@ -1,5 +1,3 @@
-//! Listing btrfs snapshots, and what the listing and the backup share.
-
 use std::collections::BTreeSet;
 
 use chrono::{NaiveDateTime, Utc};
@@ -86,7 +84,6 @@ pub async fn list(ctx: &Context, entry: &Entry) -> Result<Listing, String> {
     })
 }
 
-/// The btrbk view of a bacre.yaml btrfs block
 pub struct Btrbk<'a> {
     pub volume: &'a str,
     pub subvolume: &'a str,
@@ -98,7 +95,6 @@ pub fn btrbk(config: &BtrfsConfig) -> Btrbk<'_> {
     Btrbk {
         volume,
         subvolume: basename(&config.subvolume),
-        // relative to the volume; the atlas checked that it is inside it
         snapshot_dir: config.snapshots.get(volume.len() + 1..).unwrap_or_default(),
     }
 }
@@ -111,7 +107,6 @@ fn dirname(path: &str) -> &str {
     &path[..path.rfind('/').unwrap_or(0)]
 }
 
-/// `btrfs subvolume list -s` lists every snapshot on the filesystem the path is on
 async fn list_snapshot_names(ctx: &Context, path: &str) -> Result<BTreeSet<String>, String> {
     let result = ctx
         .shell
@@ -137,7 +132,7 @@ async fn list_snapshot_names(ctx: &Context, path: &str) -> Result<BTreeSet<Strin
         .collect())
 }
 
-/// The path at the end of a line of `btrfs subvolume list`: "… otime 2026-10-01 03:05:12 path .snapshots/@wiki.20261001T0305"
+/// A line of `btrfs subvolume list`: "… otime 2026-10-01 03:05:12 path .snapshots/@wiki.20261001T0305"
 fn listed_path(line: &str) -> Option<&str> {
     let line = line.trim_end();
     let (before, path) = line.rsplit_once(' ')?;
@@ -146,7 +141,6 @@ fn listed_path(line: &str) -> Option<&str> {
     (!path.is_empty() && !label.chars().next_back().is_some_and(is_word)).then_some(path)
 }
 
-/// `@wiki.20261001T0305`: the subvolume it is a snapshot of, and when it was taken (on the clock here)
 fn parse_snapshot_name(name: &str) -> Option<(&str, NaiveDateTime)> {
     let (subvolume, stamp) = name.split_once('.')?;
     if !subvolume.starts_with('@') || subvolume.len() < 2 || stamp.len() != 13 {

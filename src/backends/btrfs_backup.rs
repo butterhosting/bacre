@@ -1,6 +1,3 @@
-//! Snapshots through btrbk, with a configuration generated per run: snapshot into the
-//! snapshots directory, send/receive to every target, retention everywhere.
-
 use super::each::each;
 use super::{Context, btrfs, hooks};
 use crate::failure::{Failure, Outcome};
@@ -79,7 +76,6 @@ async fn btrbk(ctx: &Context, entry: &Entry, config: &BtrfsConfig, log: &Log) ->
     Ok(())
 }
 
-/// One subvolume, its retention, and the same retention on every target
 fn render(config: &BtrfsConfig) -> String {
     let view = btrfs::btrbk(config);
     let preserve_min = &config.retention.preserve_min;

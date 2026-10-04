@@ -1,6 +1,5 @@
-//! Replaces the live subvolume with a writable copy of a snapshot, with the service
-//! stopped around it. The live subvolume is moved aside first and only deleted once its
-//! replacement is in place, so a failure half way never leaves the service without data.
+//! The live subvolume is moved aside first and only deleted once its replacement is in
+//! place, so a failure half way never leaves the service without data.
 
 use super::{Context, btrfs, hooks};
 use crate::backends::restic::reason;

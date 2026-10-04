@@ -1,0 +1,16 @@
+{
+  "name": "bacre-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "install:browsers": "playwright install chromium",
+    "start": "playwright test --ui",
+    "start:headless": "playwright test --max-failures 1",
+    "tc": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^24",
+    "typescript": "^5"
+  }
+}

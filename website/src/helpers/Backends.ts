@@ -1,6 +1,5 @@
 import type { Archives } from "@/models/Archives";
 
-/** How each backend is named and tinted on screen; a new backend does not compile without an entry. */
 export const Backends: Record<Archives.Backend, Backends.Copy> = {
   btrfs: {
     card: "Local snapshots",
@@ -14,9 +13,7 @@ export const Backends: Record<Archives.Backend, Backends.Copy> = {
 
 export namespace Backends {
   export type Copy = {
-    /** Card title on a service page */
     card: string;
-    /** Tailwind classes for the backend's chip */
     chip: string;
   };
 }

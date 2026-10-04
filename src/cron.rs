@@ -1,10 +1,5 @@
-//! When a schedule fires: standard cron, read by croner, in the machine's local time.
-//!
-//! Five fields (minute hour day-of-month month day-of-week), with names (`MON-FRI`, `JAN`),
-//! shortcuts (`@daily`) and croner's extras (`L`, `#`). Weekdays are POSIX: 0 to 6 from
-//! Sunday, 7 is Sunday too. As in cron itself, when both day fields are restricted a day
-//! matches if either does. Seconds and years are refused, so a six-field expression is
-//! never quietly read as something else.
+//! Seconds and years are refused, so a six-field expression is never quietly read as
+//! something else.
 
 use chrono::{DateTime, Local, NaiveDateTime, TimeZone};
 use croner::parser::{CronParser, Seconds, Year};
@@ -32,19 +27,16 @@ impl Cron {
         &self.expression
     }
 
-    /// The first moment after `after` that the expression fires, or nothing when it never does
     pub fn next(&self, after: &DateTime<Local>) -> Option<DateTime<Local>> {
         self.cron.find_next_occurrence(after, false).ok()
     }
 
-    /// The latest moment at or before `at` that the expression fired, or nothing when it never did
     pub fn previous(&self, at: &DateTime<Local>) -> Option<DateTime<Local>> {
         self.cron.find_previous_occurrence(at, true).ok()
     }
 }
 
-/// The moment a wall-clock time stands for here. An hour that a clock change skips is
-/// taken as the hour after it, which is when a clock on the wall would next show a time.
+/// An hour that a clock change skips is taken as the hour after it.
 pub fn local(wall: NaiveDateTime) -> DateTime<Local> {
     Local
         .from_local_datetime(&wall)
@@ -63,12 +55,10 @@ mod tests {
 
     use super::Cron;
 
-    /// A time on the clock here
     fn local(text: &str) -> DateTime<Local> {
         super::local(NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M:%S").unwrap())
     }
 
-    /// A result as it shows on the clock here
     fn wall(d: Option<DateTime<Local>>) -> Option<String> {
         d.map(|d| d.naive_local().format("%Y-%m-%d %H:%M").to_string())
     }
@@ -204,8 +194,7 @@ mod tests {
         assert_eq!(cron("  5 *  * * * ").expression(), "5 * * * *");
     }
 
-    /// Both clock changes of 2026 in the Netherlands. They only mean something there, so they
-    /// check the zone first: run with TZ=Europe/Amsterdam to be sure they run.
+    /// These only mean something in Amsterdam's zone, so they check it first; `just test` sets it
     mod daylight_saving {
         use chrono::{DateTime, Local};
 

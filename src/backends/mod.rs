@@ -1,6 +1,5 @@
-//! One module per backend and per thing it can do. The functions here are where a backend
-//! is chosen: each is a `match` over `Backend`, so a new backend does not compile until it
-//! has a listing, a backup and a restore.
+//! Each function here is a `match` over `Backend`, so a new backend does not compile until
+//! it has a listing, a backup and a restore.
 
 pub mod btrfs;
 pub mod btrfs_backup;
@@ -21,7 +20,6 @@ use crate::models::atlas::Entry;
 use crate::models::jobs::{BackupRequest, RestoreRequest};
 use crate::shell::Shell;
 
-/// What every backend works with: the daemon's configuration, and the way to its tools
 #[derive(Clone)]
 pub struct Context {
     pub config: Arc<Config>,
@@ -29,14 +27,11 @@ pub struct Context {
 }
 
 pub struct Listing {
-    /// False: nothing there yet (no repository, no snapshots)
     pub found: bool,
     pub info: BackendInfo,
     pub snapshots: Vec<Snapshot>,
 }
 
-/// What the configuration says, without touching anything (used when listing fails).
-/// Only called for services whose bacre.yaml configures the backend.
 pub fn describe(entry: &Entry, backend: Backend) -> Result<BackendInfo, String> {
     match backend {
         Backend::Btrfs => btrfs::describe(entry),
@@ -44,7 +39,6 @@ pub fn describe(entry: &Entry, backend: Backend) -> Result<BackendInfo, String> 
     }
 }
 
-/// The service's snapshots in this backend, and what was found along the way
 pub async fn list(ctx: &Context, entry: &Entry, backend: Backend) -> Result<Listing, String> {
     match backend {
         Backend::Btrfs => btrfs::list(ctx, entry).await,
@@ -52,8 +46,6 @@ pub async fn list(ctx: &Context, entry: &Entry, backend: Backend) -> Result<List
     }
 }
 
-/// Backs up the request's targets one after the other; a failing one does not stop the rest.
-/// `entry` finds the atlas entry of a target.
 pub async fn backup(
     ctx: &Context,
     request: &BackupRequest,
@@ -66,8 +58,6 @@ pub async fn backup(
     }
 }
 
-/// Puts a snapshot back in place of a service's live data. What that means (swap a
-/// subvolume, run the service's own hook) is the backend's business.
 pub async fn restore(ctx: &Context, entry: &Entry, request: &RestoreRequest, log: &Log) -> Outcome {
     match request.backend {
         Backend::Btrfs => btrfs_restore::restore(ctx, entry, &request.handle, log).await,

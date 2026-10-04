@@ -14,7 +14,6 @@ export class JobClient {
     return Jobs.Job.parse(json);
   }
 
-  /** Starts the job; rejects with `JobClient.Busy` when another one is running */
   public async start(request: Jobs.Request): Promise<Jobs.Job> {
     try {
       const { json } = await this.yesttp.post<unknown>("/jobs", { body: request });
@@ -28,7 +27,6 @@ export class JobClient {
     }
   }
 
-  /** The job's live log; the caller closes it */
   public events(id: string): EventSource {
     return new EventSource(`/api/jobs/${encodeURIComponent(id)}/events`);
   }

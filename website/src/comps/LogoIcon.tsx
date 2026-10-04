@@ -1,6 +1,5 @@
 import type { ComponentProps } from "react";
 
-/** A slice of toast: Bacre is pronounced "baker". */
 export function LogoIcon(props: ComponentProps<"svg">) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>

@@ -89,7 +89,7 @@ namespace Internal {
     const snapshots = service.snapshots.filter((s) => s.backend === backend);
     const [open, setOpen] = useState(false);
     return (
-      <Card>
+      <Card data-testid={`${backend}-card`}>
         <Card.Head className="flex-row items-baseline">
           <Chip backend={backend} className="self-center" />
           <span className="font-semibold">{Backends[backend].card}</span>
@@ -130,7 +130,6 @@ namespace Internal {
     onRestore: (restoring: Restoring) => void;
     onStagingChanged: () => Promise<void>;
   };
-  /** A download waiting in the staging directory: where it is, and the two things to do with it */
   function StagedBlock({ staged, snapshot, onRestore, onStagingChanged }: StagedBlockProps) {
     const archiveClient = useRegistry(ArchiveClient);
     const [discarding, setDiscarding] = useState(false);
@@ -146,7 +145,7 @@ namespace Internal {
     }
 
     return (
-      <div className="flex flex-col gap-1.5 border-b border-[#ecc9a3] bg-[#fdf6ea] px-4 pt-2.5 pb-3">
+      <div data-testid="staged" className="flex flex-col gap-1.5 border-b border-[#ecc9a3] bg-[#fdf6ea] px-4 pt-2.5 pb-3">
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="rounded-full bg-[#f7ead3] px-[7px] py-[2px] text-xs font-semibold text-[#7a5010]">staged</span>
           <code className="font-mono">{staged.handle}</code>
@@ -189,7 +188,7 @@ namespace Internal {
         );
       case "ok":
         return snapshots.map((snapshot) => (
-          <Card.Row key={snapshot.handle}>
+          <Card.Row key={snapshot.handle} data-testid="snapshot">
             <div className="flex min-w-0 flex-col gap-0.5">
               <code className="font-mono text-xs">{snapshot.handle}</code>
               <span className="text-xs text-c-muted">{Prettify.fullDate(snapshot.time)}</span>
@@ -216,11 +215,6 @@ namespace Internal {
     staged: boolean;
     onRestore: (restoring: Restoring) => void;
   };
-  /**
-   * What a snapshot row offers. A btrfs snapshot is already on this machine, so it restores
-   * directly; a restic one is downloaded first and restored from its staged copy above.
-   * A new backend does not compile without a case.
-   */
   function Action({ service, snapshot, staged, onRestore }: ActionProps) {
     const jobClient = useRegistry(JobClient);
     const navigate = useNavigate();
@@ -270,11 +264,9 @@ namespace Internal {
   type DetailsProps = {
     snapshot: Archives.Snapshot;
   };
-  /** The per-backend facts at the end of a row; a new backend does not compile without a case */
   function Details({ snapshot }: DetailsProps) {
     switch (snapshot.backend) {
       case "btrfs": {
-        // silent when every target has it; a snapshot that did not reach one is worth a word
         const { onTargets, targets } = snapshot.details;
         const missing = targets - onTargets;
         if (missing <= 0) {
@@ -287,7 +279,7 @@ namespace Internal {
         );
       }
       case "restic":
-        // nothing per row: the time is on the left, and the paths are the same for every snapshot (see the info panel)
+        // nothing per row: the paths are the same for every snapshot
         return null;
       default:
         return snapshot satisfies never;

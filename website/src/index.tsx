@@ -3,14 +3,9 @@ import { ClientRegistry } from "./ClientRegistry";
 import { Website } from "./Website";
 import "./index.css";
 
-/** How long to wait before asking a server that is not there again */
 const RETRY_MS = 1_000;
 
-/**
- * The page cannot do anything before the server has said which build it is. A server that
- * is not answering yet (still compiling during development, restarting after a deploy) is
- * waited for; anything else it says is shown as it is.
- */
+/** A server that does not answer yet (still compiling, restarting after a deploy) is waited for */
 async function start() {
   const root = createRoot(document.getElementById("root")!);
   for (;;) {
@@ -29,7 +24,6 @@ async function start() {
   }
 }
 
-/** No answer at all, or a proxy saying the server behind it is not there */
 function isUnreachable(e: unknown): boolean {
   const status = (e as { response?: { status?: number } }).response?.status;
   return status === undefined || status === 502 || status === 503 || status === 504;

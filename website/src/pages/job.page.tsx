@@ -14,13 +14,11 @@ export function jobPage() {
   const { job, missing } = useJob(id);
   useDocumentTitle(job ? `${job.title} · Bacre` : "Job · Bacre");
 
-  // follow the log as it grows, like a terminal
   const end = useRef<HTMLDivElement>(null);
   useEffect(() => {
     end.current?.scrollIntoView({ block: "nearest" });
   }, [job?.lines.length]);
 
-  // the elapsed time ticks while the job runs
   const [, tick] = useState(0);
   useEffect(() => {
     if (job?.status !== "running") {

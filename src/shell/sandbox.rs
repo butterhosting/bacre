@@ -2,9 +2,7 @@ use async_trait::async_trait;
 
 use super::{Env, FakeShell, OnLine, Output, RealShell, Shell};
 
-/// The shell of the dev stage: everything runs for real (restic, the hooks), except what a
-/// container cannot do. A container has no btrfs, so `btrfs`, `btrbk`, and the `mv` that
-/// moves a subvolume aside during a btrfs restore are answered by the fake.
+/// Real, except for btrfs: a container has none.
 #[derive(Default)]
 pub struct SandboxShell {
     fake: FakeShell,
@@ -74,7 +72,6 @@ mod tests {
         assert_eq!(fake.code, 0);
         assert!(fake.stdout.contains("path .snapshots/@wiki."));
 
-        // the fake mv moves nothing: there is no subvolume to move
         let dir = tempfile::tempdir().unwrap();
         let live = dir.path().join("@wiki");
         std::fs::create_dir(&live).unwrap();

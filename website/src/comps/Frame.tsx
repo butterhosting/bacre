@@ -8,7 +8,6 @@ import { Route } from "../Route";
 import { Button } from "./Button";
 import { LogoIcon } from "./LogoIcon";
 
-/** Sidebar plus content column; every page sits inside one. */
 export function Frame({ className, ...props }: ComponentProps<"main">) {
   return (
     <>
@@ -36,17 +35,13 @@ namespace Internal {
     );
   }
 
-  /**
-   * The dev stage's sandbox: seed it with the made-up services, or empty it. The pages
-   * follow the server's change stream, so they show the result by themselves.
-   */
   function Sandbox() {
     const env = useEnv();
     const restrictedClient = useRegistry(RestrictedClient);
     const [working, setWorking] = useState<"seed" | "purge">();
     const [problem, setProblem] = useState<string>();
 
-    if (env.stage !== "dev") {
+    if (env.stage === "prod") {
       return null;
     }
 

@@ -2,10 +2,7 @@ import { useEffect, useRef } from "react";
 import { ChangeClient } from "../clients/ChangeClient";
 import { useRegistry } from "./useRegistry";
 
-/**
- * Runs `onChange` whenever the server reports a change, and when the tab comes back into
- * view (a hidden tab's stream may have been put to sleep by the browser).
- */
+/** Also when the tab comes back into view: a hidden tab's stream may have been put to sleep */
 export function useChanges(onChange: () => void): void {
   const changeClient = useRegistry(ChangeClient);
   const latest = useRef(onChange);

@@ -1,7 +1,3 @@
-//! One restic snapshot per service: the `backupPrepare` hook quiesces and dumps, the backup
-//! paths go into the repository tagged with the stamp, retention prunes, and `backupRelease`
-//! runs whatever happened in between.
-
 use chrono::Local;
 
 use super::each::each;
@@ -65,7 +61,6 @@ async fn backup_and_prune(
     log: &Log,
 ) -> Outcome {
     let service = &entry.config.service;
-    // the `t=` tag of a snapshot: local time, 20261001T0301
     let tag = format!("t={}", Local::now().format("%Y%m%dT%H%M"));
     let mut backup = restic::command(ctx, entry, ["backup", "--tag", &tag])?;
     backup.extend(config.backup_paths.iter().cloned());
@@ -144,7 +139,6 @@ async fn ensure_repository(ctx: &Context, entry: &Entry, log: &Log) -> Outcome {
     Ok(())
 }
 
-/// A restic command with its output in the job log
 pub async fn stream(
     ctx: &Context,
     entry: &Entry,

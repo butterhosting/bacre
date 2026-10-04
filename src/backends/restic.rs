@@ -1,5 +1,3 @@
-//! Listing restic snapshots, and what the listing, the backup and the restore share.
-
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
@@ -22,7 +20,6 @@ pub fn config(entry: &Entry) -> Result<&ResticConfig, String> {
     })
 }
 
-/// `restic -r <repository> --cache-dir <dir>` and then whatever is asked of it
 pub fn command<const N: usize>(
     ctx: &Context,
     entry: &Entry,
@@ -40,7 +37,6 @@ pub fn command<const N: usize>(
     Ok(command)
 }
 
-/// The environment variables of the envset the bacre.yaml refers to (the atlas scan already checked the name exists)
 pub fn env(ctx: &Context, entry: &Entry) -> Result<Env, String> {
     let name = &config(entry)?.envset;
     ctx.config.envsets.get(name).cloned().ok_or_else(|| {
@@ -71,7 +67,6 @@ pub fn describe(entry: &Entry) -> Result<BackendInfo, String> {
     })
 }
 
-/// A snapshot as `restic snapshots --json` prints it
 #[derive(Deserialize)]
 struct Listed {
     time: DateTime<Utc>,
@@ -135,7 +130,6 @@ pub async fn list(ctx: &Context, entry: &Entry) -> Result<Listing, String> {
     })
 }
 
-/// What a tool said on its way out, or its exit code when it said nothing
 pub fn reason(stderr: &str, code: i32) -> String {
     // with --json, restic 0.19 and later report the error itself as JSON
     let reported: Vec<String> = stderr

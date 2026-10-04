@@ -1,11 +1,6 @@
 @import "tailwindcss";
 
-/**
- * Theme settings and variables
- * https://tailwindcss.com/docs/theme#theme-variable-namespaces
- */
 @theme {
-    /* Colors: warm ivory ground, terracotta for the one thing on a page that acts */
     --color-c-bg: #f4efe7;
     --color-c-nav: #efe8dd;
     --color-c-card: #fffdf9;
@@ -18,7 +13,6 @@
     --color-c-accent: #b5502f;
     --color-c-ok: #2f7a4f;
     --color-c-warn: #b7791f;
-    /* One tint per backend, used only by the chips */
     --color-c-btrfs-bg: #cfe8e3;
     --color-c-btrfs-fg: #0f5a52;
     --color-c-restic-bg: #e5d9f6;
@@ -37,7 +31,6 @@
         @apply min-h-screen bg-c-bg font-sans text-c-ink;
     }
     #root {
-        /* the sidebar becomes a top bar on a phone */
         @apply flex min-h-screen flex-col md:flex-row;
     }
 }

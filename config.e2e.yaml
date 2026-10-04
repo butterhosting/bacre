@@ -1,0 +1,18 @@
+stage: e2e
+server:
+  bind: 0.0.0.0
+  port: 3000
+services:
+  - .sandbox/services/*/bacre.yaml
+envsets:
+  demo:
+    RESTIC_PASSWORD: demo
+  # for the one service whose repository should not open
+  demo-wrong-password:
+    RESTIC_PASSWORD: not-the-password
+sandbox: .sandbox
+tmpDir: .sandbox/tmp
+backends:
+  restic:
+    cacheDir: .sandbox/cache
+    stagingDir: .sandbox/staging
