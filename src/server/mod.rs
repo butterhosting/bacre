@@ -280,7 +280,14 @@ mod tests {
 
     use super::*;
 
-    const WIKI: &str = "service: wiki\nhome: /srv/demo/services/wiki\nbtrfs:\n  schedule: '5 * * * *'\n  subvolume: /srv/demo/disk-a/@wiki\n  snapshots: /srv/demo/disk-a/.snapshots\n  targets: [/srv/demo/disk-b/.snapshots]\n  retention: { preserveMin: 24h, preserve: [72h, 30d] }\n  lifecycle: { stop: docker compose down, start: docker compose up --wait }\nrestic:\n  repository: s3:s3.example.com/demo-backups/wiki\n  envset: demo-s3\n  retention: { keepLast: 3, keepDaily: 30, keepWeekly: 15, keepMonthly: 12 }\n  backupPaths: [/srv/demo/disk-a/@wiki/data, /srv/demo/dumps/wiki]\n  lifecycle:\n    backupPrepare: docker compose stop main\n    restoreApply: docker compose up --wait\n";
+    /// btrfs on two fake disks under `root`; restic's paths are the ones the fake restic answers with
+    fn wiki(root: &str) -> String {
+        format!(
+            "service: wiki\nhome: /srv/demo/services/wiki\nbtrfs:\n  schedule: '5 * * * *'\n  subvolume: {root}/disk-a/@wiki\n  destinations: [{root}/disk-a/.snapshots, {root}/disk-b/.snapshots]\n  retention: {{ keepLast: 3, keepDaily: 7 }}\n  lifecycle: {{ stop: docker compose down, start: docker compose up --wait }}\n{RESTIC}"
+        )
+    }
+
+    const RESTIC: &str = "restic:\n  repository: s3:s3.example.com/demo-backups/wiki\n  envset: demo-s3\n  retention: { keepLast: 3, keepDaily: 30, keepWeekly: 15, keepMonthly: 12 }\n  backupPaths: [/srv/demo/disk-a/@wiki/data, /srv/demo/dumps/wiki]\n  lifecycle:\n    backupPrepare: docker compose stop main\n    restoreApply: docker compose up --wait\n";
 
     struct Daemon {
         app: Arc<App>,
@@ -289,8 +296,16 @@ mod tests {
 
     async fn daemon() -> Daemon {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(dir.path().join("atlas")).unwrap();
-        std::fs::write(dir.path().join("atlas/wiki.yaml"), WIKI).unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        std::fs::create_dir_all(root.join("atlas")).unwrap();
+        for disk in ["disk-a", "disk-b"] {
+            std::fs::create_dir_all(root.join(disk).join(".snapshots")).unwrap();
+            std::fs::write(root.join(disk).join(".fake-btrfs-filesystem"), disk).unwrap();
+        }
+        std::fs::create_dir_all(root.join("disk-a/@wiki")).unwrap();
+        // one snapshot that never made it to disk-b
+        std::fs::create_dir_all(root.join("disk-a/.snapshots/@wiki.20261001T0305")).unwrap();
+        std::fs::write(root.join("atlas/wiki.yaml"), wiki(&root.to_string_lossy())).unwrap();
         let app = testing::app(dir.path(), "");
         app.archive_service.refresh().await;
         Daemon { app, _dir: dir }
@@ -375,7 +390,7 @@ mod tests {
         assert_eq!(wiki["backends"]["btrfs"]["info"]["backend"], "btrfs");
         assert_eq!(
             wiki["backends"]["btrfs"]["info"]["retention"],
-            json!({ "preserveMin": "24h", "preserve": ["72h", "30d"] })
+            json!({ "keepLast": 3, "keepHourly": 0, "keepDaily": 7, "keepWeekly": 0, "keepMonthly": 0 })
         );
         assert_eq!(
             wiki["backends"]["btrfs"]["info"]["lifecycle"],
@@ -395,9 +410,11 @@ mod tests {
             .iter()
             .find(|s| s["backend"] == "btrfs")
             .unwrap();
-        // the fake replica lags one snapshot behind
-        assert_eq!(btrfs["details"], json!({ "onTargets": 0, "targets": 1 }));
-        assert!(btrfs["handle"].as_str().unwrap().starts_with("@wiki."));
+        assert_eq!(
+            btrfs["details"],
+            json!({ "onDestinations": 1, "destinations": 2 })
+        );
+        assert_eq!(btrfs["handle"], "@wiki.20261001T0305");
         let restic = wiki["snapshots"]
             .as_array()
             .unwrap()
@@ -461,8 +478,6 @@ mod tests {
         let (_, jobs) = get(&daemon.app, "/api/jobs").await;
         assert_eq!(jobs[0]["id"], id);
         assert!(jobs[0].get("lines").is_none());
-        // the snapshot the fake btrbk took is in the next listing: the newest one is from this minute
-        // (not counted, because at five past the hour it has the name of the fake hourly one)
         let (_, archives) = get(&daemon.app, "/api/archives").await;
         let snapshots = archives["services"][0]["snapshots"].as_array().unwrap();
         let newest = snapshots.iter().find(|s| s["backend"] == "btrfs").unwrap();

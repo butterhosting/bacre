@@ -18,6 +18,8 @@ FROM debian:trixie-slim
 COPY --from=restic /restic /usr/local/bin/restic
 ARG TARGETARCH
 COPY dist/bacre-linux-${TARGETARCH} /usr/local/bin/bacre
+COPY fake/btrfs.sh /usr/local/bin/btrfs
+COPY fake/findmnt.sh /usr/local/bin/findmnt
 WORKDIR /bacre
 ENTRYPOINT ["bacre"]
 CMD ["/bacre/config.yaml"]

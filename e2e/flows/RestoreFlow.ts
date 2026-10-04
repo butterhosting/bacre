@@ -7,10 +7,20 @@ export namespace RestoreFlow {
     await card.getByTestId("snapshot").first().getByRole("button", { name: "Download", exact: true }).click();
   }
 
+  export async function restoreSnapshot(page: Page, service: string, handle: string): Promise<void> {
+    await page.goto(`services/${service}`);
+    const row = page.getByTestId("btrfs-card").getByTestId("snapshot").filter({ hasText: handle });
+    await row.getByRole("button", { name: "Restore", exact: true }).click();
+    await confirm(page, service);
+  }
+
   export async function restoreStaged(page: Page, service: string): Promise<void> {
     await page.goto(`services/${service}`);
     await page.getByTestId("staged").getByRole("button", { name: "Restore", exact: true }).click();
+    await confirm(page, service);
+  }
 
+  async function confirm(page: Page, service: string): Promise<void> {
     const dialog = page.getByRole("dialog", { name: `Restore ${service}` });
     await expect(dialog).toBeVisible();
     const confirm = dialog.getByRole("button", { name: "Restore", exact: true });

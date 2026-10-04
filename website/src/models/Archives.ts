@@ -16,8 +16,8 @@ export namespace Archives {
       backend: z.literal("btrfs"),
       ...Common,
       details: z.object({
-        onTargets: z.number().int().nonnegative(),
-        targets: z.number().int().nonnegative(),
+        onDestinations: z.number().int().nonnegative(),
+        destinations: z.number().int().nonnegative(),
       }),
     }),
     z.object({
@@ -31,20 +31,28 @@ export namespace Archives {
   ]);
   export type Snapshot = z.infer<typeof Snapshot>;
 
+  export const Retention = z.object({
+    keepLast: z.number(),
+    keepHourly: z.number(),
+    keepDaily: z.number(),
+    keepWeekly: z.number(),
+    keepMonthly: z.number(),
+  });
+  export type Retention = z.infer<typeof Retention>;
+
   export const BackendInfo = z.discriminatedUnion("backend", [
     z.object({
       backend: z.literal("btrfs"),
       subvolume: z.string(),
-      snapshots: z.string(),
-      targets: z.array(z.string()),
-      retention: z.object({ preserveMin: z.string(), preserve: z.array(z.string()) }),
+      destinations: z.array(z.string()),
+      retention: Retention,
       lifecycle: z.object({ stop: z.string(), start: z.string() }).nullable(),
     }),
     z.object({
       backend: z.literal("restic"),
       repository: z.string(),
       envset: z.string(),
-      retention: z.object({ keepLast: z.number(), keepDaily: z.number(), keepWeekly: z.number(), keepMonthly: z.number() }),
+      retention: Retention,
       paths: z.array(z.string()),
       hooks: z.object({ prepare: z.string().optional(), release: z.string().optional(), restore: z.string().optional() }),
     }),

@@ -85,6 +85,8 @@ async fn backup_and_prune(
             "",
             "--keep-last",
             &keep.keep_last.to_string(),
+            "--keep-hourly",
+            &keep.keep_hourly.to_string(),
             "--keep-daily",
             &keep.keep_daily.to_string(),
             "--keep-weekly",

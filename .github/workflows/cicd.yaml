@@ -2,6 +2,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "*"
   workflow_dispatch:
 
 jobs:
@@ -11,6 +13,9 @@ jobs:
     steps:
       - name: "Environment :: Checkout"
         uses: actions/checkout@v6
+        with:
+          # the version comes from the closest tag
+          fetch-depth: 0
 
       - name: "Environment :: Nix"
         uses: cachix/install-nix-action@v31
@@ -29,19 +34,30 @@ jobs:
       - name: "Application :: Build"
         run: nix develop --command just build
 
-      - name: "Application :: Inspect Binaries"
-        run: file dist/*
+      - name: "Application :: E2E Tests"
+        run: |
+          nix develop --command sh -c 'bun install --cwd e2e && cd e2e && bunx playwright install-deps chromium'
+          nix develop --command just e2e-headless
 
-      - name: "Application :: Smoke Test"
+      - name: "Application :: E2E Report"
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            e2e/.playwright-report/
+            e2e/.test-results/
+          # both are dot-directories, which the action leaves out unless told otherwise
+          include-hidden-files: true
+          retention-days: 7
+
+      - name: "Application :: Health Test"
         run: |
           ./dist/bacre-linux-amd64 --version
-          echo 'server: { bind: 127.0.0.1, port: 3001 }' > smoke.yaml
-          ./dist/bacre-linux-amd64 smoke.yaml &
+          echo 'server: { bind: 127.0.0.1, port: 3001 }' > health.yaml
+          ./dist/bacre-linux-amd64 health.yaml &
           sleep 3
           curl --fail --silent --show-error http://127.0.0.1:3001/health
-          curl --fail --silent --show-error http://127.0.0.1:3001/api/env | grep --quiet '"stage":"prod"'
-          curl --fail --silent --show-error http://127.0.0.1:3001/api/archives | grep --quiet '"services"'
-          curl --fail --silent --show-error http://127.0.0.1:3001/ | grep "<title>Bacre</title>"
 
       - name: "Application :: Binaries"
         uses: actions/upload-artifact@v7
@@ -49,3 +65,32 @@ jobs:
           name: bacre
           path: dist/
           retention-days: 1
+
+  release:
+    name: "Release"
+    if: github.ref_type == 'tag'
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: "Release :: Binaries"
+        uses: actions/download-artifact@v8
+        with:
+          name: bacre
+          path: dist/
+
+      - name: "Release :: Checksums"
+        working-directory: dist
+        run: sha256sum bacre-linux-* > SHA256SUMS
+
+      - name: "Release :: Publish"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # a prerelease (1.0.0-alpha.1) is marked as one, and never shown as the latest release
+        run: |
+          case "$GITHUB_REF_NAME" in
+            *-*) prerelease=--prerelease ;;
+            *) prerelease= ;;
+          esac
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes "" --verify-tag $prerelease

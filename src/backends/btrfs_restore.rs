@@ -2,11 +2,10 @@
 //! place, so a failure half way never leaves the service without data.
 
 use super::{Context, btrfs, hooks};
-use crate::backends::restic::reason;
 use crate::failure::{Failure, Outcome};
 use crate::jobs::log::Log;
-use crate::models::atlas::Entry;
-use crate::shell::{Env, cmd};
+use crate::models::atlas::{BtrfsConfig, Entry};
+use crate::shell::cmd;
 
 pub async fn restore(ctx: &Context, entry: &Entry, handle: &str, log: &Log) -> Outcome {
     let service = &entry.config.service;
@@ -22,17 +21,7 @@ pub async fn restore(ctx: &Context, entry: &Entry, handle: &str, log: &Log) -> O
             config.subvolume
         )));
     }
-    let snapshot = format!("{}/{handle}", config.snapshots.trim_end_matches('/'));
-    let probe = ctx
-        .shell
-        .run(&cmd(["btrfs", "subvolume", "show", &snapshot]), &Env::new())
-        .await;
-    if probe.code != 0 {
-        return Err(Failure::new(format!(
-            "No snapshot at {snapshot}: {}",
-            reason(&probe.stderr, probe.code)
-        )));
-    }
+    let snapshot = source(ctx, config, handle).await?;
 
     let live = config.subvolume.as_str();
     let aside = format!("{live}.bacre-replaced");
@@ -58,6 +47,32 @@ pub async fn restore(ctx: &Context, entry: &Entry, handle: &str, log: &Log) -> O
     )
     .await?;
     swapped
+}
+
+/// Only a copy on the subvolume's own filesystem can become the live subvolume in place
+async fn source(ctx: &Context, config: &BtrfsConfig, handle: &str) -> Outcome<String> {
+    let live = btrfs::filesystem(ctx, &config.subvolume).await?;
+    let mut elsewhere = Vec::new();
+    for destination in &config.destinations {
+        if !btrfs::names(destination, btrfs::basename(&config.subvolume))
+            .await
+            .is_ok_and(|names| names.contains(handle))
+        {
+            continue;
+        }
+        if btrfs::filesystem(ctx, destination).await? == live {
+            return Ok(format!("{destination}/{handle}"));
+        }
+        elsewhere.push(destination.as_str());
+    }
+    Err(Failure::new(match elsewhere.is_empty() {
+        true => format!("{handle} is in none of the destinations"),
+        false => format!(
+            "{handle} is only in {}, on another filesystem than {}; restoring from there is not supported yet",
+            elsewhere.join(" and "),
+            config.subvolume
+        ),
+    }))
 }
 
 async fn swap(

@@ -31,6 +31,8 @@ services:
       - .:/app
       - cargo-target:/cargo-target
       - cargo-registry:/usr/local/cargo/registry
+      - ./fake/btrfs.sh:/usr/local/bin/btrfs:ro
+      - ./fake/findmnt.sh:/usr/local/bin/findmnt:ro
       # schedules and snapshot names are in local time
       - /etc/localtime:/etc/localtime:ro
     stop_grace_period: 100ms

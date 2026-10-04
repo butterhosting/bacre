@@ -75,6 +75,69 @@ impl Shell for RealShell {
             }
         }
     }
+
+    async fn pipe(&self, from: &[String], to: &[String], env: &Env, on_line: OnLine<'_>) -> i32 {
+        let mut sender = match Self::spawn(from, env, Stdio::null()) {
+            Ok(child) => child,
+            Err(e) => {
+                on_line(Stream::Err, &e);
+                return NOT_STARTED;
+            }
+        };
+        let carried: Stdio = match sender.stdout.take().expect("stdout is piped").try_into() {
+            Ok(stdio) => stdio,
+            Err(e) => {
+                on_line(Stream::Err, &e.to_string());
+                let _ = sender.kill().await;
+                return NOT_STARTED;
+            }
+        };
+        let mut receiver = match Self::spawn(to, env, carried) {
+            Ok(child) => child,
+            Err(e) => {
+                on_line(Stream::Err, &e);
+                let _ = sender.kill().await;
+                return NOT_STARTED;
+            }
+        };
+        let sender_err = sender.stderr.take().expect("stderr is piped");
+        let receiver_out = receiver.stdout.take().expect("stdout is piped");
+        let receiver_err = receiver.stderr.take().expect("stderr is piped");
+        tokio::join!(
+            lines(sender_err, Stream::Err, on_line),
+            lines(receiver_out, Stream::Out, on_line),
+            lines(receiver_err, Stream::Err, on_line)
+        );
+        let (sent, received) = (
+            finished(&mut sender, on_line).await,
+            finished(&mut receiver, on_line).await,
+        );
+        if sent != 0 { sent } else { received }
+    }
+}
+
+impl RealShell {
+    fn spawn(cmd: &[String], env: &Env, stdin: Stdio) -> Result<tokio::process::Child, String> {
+        let (program, args) = cmd.split_first().ok_or("empty command")?;
+        Command::new(program)
+            .args(args)
+            .envs(env)
+            .stdin(stdin)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("{program}: {e}"))
+    }
+}
+
+async fn finished(child: &mut tokio::process::Child, on_line: OnLine<'_>) -> i32 {
+    match child.wait().await {
+        Ok(status) => status.code().unwrap_or(-1),
+        Err(e) => {
+            on_line(Stream::Err, &e.to_string());
+            -1
+        }
+    }
 }
 
 fn not_started(program: &str, reason: &str) -> Output {
@@ -177,5 +240,52 @@ mod tests {
             .await;
         assert_eq!(output.code, 127);
         assert!(output.stderr.starts_with("bacre-no-such-command: "));
+    }
+
+    #[tokio::test]
+    async fn should_pipe_one_command_into_the_next_and_report_the_first_failure() {
+        let seen = Mutex::new(Vec::new());
+        let on_line = |stream: Stream, text: &str| {
+            seen.lock().unwrap().push((stream, text.trim().to_string()))
+        };
+
+        let code = RealShell
+            .pipe(
+                &cmd(["sh", "-c", "echo one; echo two; echo note >&2"]),
+                &cmd(["sh", "-c", "wc -l; echo done >&2"]),
+                &Env::new(),
+                &on_line,
+            )
+            .await;
+        let mut lines = seen.lock().unwrap().clone();
+        lines.sort_by(|a, b| a.1.cmp(&b.1));
+        assert_eq!(code, 0);
+        assert_eq!(
+            lines,
+            vec![
+                (Stream::Out, "2".to_string()),
+                (Stream::Err, "done".to_string()),
+                (Stream::Err, "note".to_string())
+            ]
+        );
+
+        let failed = RealShell
+            .pipe(
+                &cmd(["sh", "-c", "exit 3"]),
+                &cmd(["cat"]),
+                &Env::new(),
+                &|_, _| {},
+            )
+            .await;
+        assert_eq!(failed, 3);
+        let failed = RealShell
+            .pipe(
+                &cmd(["true"]),
+                &cmd(["sh", "-c", "cat >/dev/null; exit 4"]),
+                &Env::new(),
+                &|_, _| {},
+            )
+            .await;
+        assert_eq!(failed, 4);
     }
 }

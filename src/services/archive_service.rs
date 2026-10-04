@@ -12,7 +12,7 @@ use crate::models::archives::{Backend, BackendState, BackendStatus, Problem, Ser
 use crate::models::atlas::Entry;
 
 const REFRESH: Duration = Duration::from_secs(30 * 60);
-const ATLAS_CHECK: Duration = Duration::from_secs(20);
+const ATLAS_CHECK: Duration = Duration::from_secs(10);
 const STALE: chrono::Duration = chrono::Duration::minutes(5);
 
 pub struct ArchiveService {

@@ -8,7 +8,8 @@
 //! | ledger  | hourly, lifecycle         | by hand only, history that stopped 9 days ago  |
 //! | gallery | hourly, lifecycle         | daily, but its envset has the wrong password   |
 //! | recipes | hourly, lifecycle         | daily, no repository yet                       |
-//! | dns     | hourly, lifecycle         | —                                              |
+//! | dns     | hourly, newest not sent,  | —                                              |
+//! |         | keeps only the last 2     |                                                |
 //! | radio   | by hand, no lifecycle     | —                                              |
 
 use std::path::{Path, PathBuf};
@@ -78,20 +79,6 @@ impl SandboxService {
         built.map_err(Refusal::Failed)
     }
 
-    pub async fn seed_if_empty(&self) {
-        if tokio::fs::metadata(self.root.join("services"))
-            .await
-            .is_ok()
-        {
-            return;
-        }
-        println!("==> Seeding the sandbox at {}", self.root.display());
-        match self.seed().await {
-            Ok(()) => println!("==> Seeded"),
-            Err(refusal) => eprintln!("==> The sandbox could not be seeded: {refusal:?}"),
-        }
-    }
-
     /// Everything in the sandbox goes, the directory itself stays: it may be a mount point
     async fn empty(&self) -> Result<(), String> {
         let failed = |e: std::io::Error| format!("could not empty {}: {e}", self.root.display());
@@ -125,8 +112,15 @@ impl SandboxService {
             }
         }
         let world = World::new(&self.root);
-        for dir in [&world.snapshots, &world.target] {
+        for (dir, filesystem) in [
+            (&world.snapshots, "sandbox-disk-a"),
+            (&world.target, "sandbox-disk-b"),
+        ] {
             tokio::fs::create_dir_all(dir)
+                .await
+                .map_err(|e| e.to_string())?;
+            let disk = dir.parent().expect("a disk above .snapshots");
+            tokio::fs::write(disk.join(".fake-btrfs-filesystem"), filesystem)
                 .await
                 .map_err(|e| e.to_string())?;
         }
@@ -160,6 +154,40 @@ impl SandboxService {
                 .map_err(|e| format!("could not write {}: {e}", path.display()))?;
         }
 
+        let moments = btrfs_moments(spec, now);
+        let mut sent: Option<PathBuf> = None;
+        for (nr, moment) in moments.iter().enumerate() {
+            let snapshot =
+                world
+                    .snapshots
+                    .join(format!("@{}.{}", spec.name, moment.format("%Y%m%dT%H%M")));
+            self.btrfs(
+                &[
+                    "btrfs",
+                    "subvolume",
+                    "snapshot",
+                    "-r",
+                    &show(&paths.live),
+                    &show(&snapshot),
+                ],
+                None,
+            )
+            .await?;
+            if spec.name == "dns" && nr == moments.len() - 1 {
+                continue;
+            }
+            let mut send = vec!["btrfs", "send"];
+            let parent = sent.as_ref().map(|parent| show(parent));
+            if let Some(parent) = &parent {
+                send.extend(["-p", parent]);
+            }
+            let snapshot_path = show(&snapshot);
+            send.push(&snapshot_path);
+            self.btrfs(&send, Some(&["btrfs", "receive", &show(&world.target)]))
+                .await?;
+            sent = Some(snapshot);
+        }
+
         if let Some(restic) = &spec.restic {
             let moments = restic.history.moments(now);
             if !moments.is_empty() {
@@ -189,6 +217,34 @@ impl SandboxService {
         tokio::fs::write(paths.home.join("bacre.yaml"), yaml)
             .await
             .map_err(|e| e.to_string())
+    }
+
+    async fn btrfs(&self, command: &[&str], into: Option<&[&str]>) -> Result<(), String> {
+        let command: Vec<String> = command.iter().map(|part| part.to_string()).collect();
+        let errors = std::sync::Mutex::new(String::new());
+        let on_line = |_, text: &str| errors.lock().unwrap().push_str(text);
+        let code = match into {
+            Some(into) => {
+                let into: Vec<String> = into.iter().map(|part| part.to_string()).collect();
+                self.ctx
+                    .shell
+                    .pipe(&command, &into, &Env::new(), &on_line)
+                    .await
+            }
+            None => {
+                let output = self.ctx.shell.run(&command, &Env::new()).await;
+                on_line(crate::shell::Stream::Err, &output.stderr);
+                output.code
+            }
+        };
+        match code {
+            0 => Ok(()),
+            _ => Err(format!(
+                "{} failed: {}",
+                command[..3].join(" "),
+                errors.into_inner().unwrap().trim()
+            )),
+        }
     }
 
     async fn restic(&self, paths: &Paths, args: &[&str]) -> Result<(), String> {
@@ -254,6 +310,25 @@ impl History {
                 .map(|days| at_night(now - Duration::days(days)))
                 .collect(),
         }
+    }
+}
+
+/// Oldest first; a scheduled service's newest is this minute, so nothing looks overdue
+fn btrfs_moments(spec: &Spec, now: DateTime<Local>) -> Vec<DateTime<Local>> {
+    let night = |days| {
+        let day = now - Duration::days(days);
+        let wall = day.date_naive().and_hms_opt(3, 5, 0).expect("a valid time");
+        Local.from_local_datetime(&wall).earliest().unwrap_or(day)
+    };
+    match spec.lifecycle {
+        true => vec![
+            night(2),
+            night(1),
+            now - Duration::hours(2),
+            now - Duration::hours(1),
+            now,
+        ],
+        false => vec![night(6), night(3)],
     }
 }
 
@@ -431,8 +506,12 @@ fn bacre_yaml(world: &World, spec: &Spec) -> String {
     if spec.lifecycle {
         yaml += "  schedule: \"5 * * * *\"\n";
     }
+    let retention = match name {
+        "dns" => "    keepLast: 2\n",
+        _ => "    keepLast: 6\n    keepHourly: 24\n    keepDaily: 7\n",
+    };
     yaml += &format!(
-        "  subvolume: {live}\n  snapshots: {}\n  targets:\n    - {}\n  retention:\n    preserveMin: 24h\n    preserve: [72h, 30d]\n",
+        "  subvolume: {live}\n  destinations:\n    - {}\n    - {}\n  retention:\n{retention}",
         show(&world.snapshots),
         show(&world.target)
     );

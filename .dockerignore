@@ -1,2 +1,3 @@
 *
 !dist/bacre-linux-*
+!fake/*.sh

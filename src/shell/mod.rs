@@ -1,14 +1,14 @@
+#[cfg(test)]
 mod fake;
 mod real;
-mod sandbox;
 
 use std::collections::BTreeMap;
 
 use async_trait::async_trait;
 
+#[cfg(test)]
 pub use fake::FakeShell;
 pub use real::RealShell;
-pub use sandbox::SandboxShell;
 
 pub type Env = BTreeMap<String, String>;
 
@@ -38,6 +38,10 @@ pub trait Shell: Send + Sync {
         env: &Env,
         on_line: OnLine<'_>,
     ) -> i32;
+
+    /// `from | to`: everything `from` prints goes into `to`; what else they print is handed over by line.
+    /// The exit code is `from`'s when it failed, `to`'s otherwise.
+    async fn pipe(&self, from: &[String], to: &[String], env: &Env, on_line: OnLine<'_>) -> i32;
 }
 
 pub fn cmd<const N: usize>(parts: [&str; N]) -> Vec<String> {

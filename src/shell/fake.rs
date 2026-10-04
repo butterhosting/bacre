@@ -4,10 +4,10 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use chrono::{DateTime, Local, SecondsFormat, TimeZone, Timelike, Utc};
+use chrono::{DateTime, Local, SecondsFormat, TimeZone, Utc};
 use serde_json::json;
 
-use super::{Env, OnLine, Output, Shell, Stream};
+use super::{Env, OnLine, Output, RealShell, Shell, Stream};
 
 /// Answers the exact invocations the backends make, in their tools' output formats.
 #[derive(Default)]
@@ -17,14 +17,10 @@ pub struct FakeShell {
 
 #[derive(Default)]
 struct State {
-    created_btrfs: Vec<(String, DateTime<Local>)>,
     created_restic: Vec<(String, DateTime<Local>)>,
     initialized_repos: HashSet<String>,
 }
 
-const SERVICES: [&str; 8] = [
-    "dns", "gallery", "ledger", "mailbox", "radio", "recipes", "tracker", "wiki",
-];
 const LOCAL_ONLY: [&str; 3] = ["dns", "radio", "recipes"];
 const BROKEN: [&str; 1] = ["gallery"];
 const STALE: [&str; 1] = ["ledger"];
@@ -33,10 +29,10 @@ const DUMPS: &str = "/srv/demo/dumps";
 
 #[async_trait]
 impl Shell for FakeShell {
-    async fn run(&self, cmd: &[String], _env: &Env) -> Output {
+    async fn run(&self, cmd: &[String], env: &Env) -> Output {
         println!("==> (fake) {}", cmd.join(" "));
         match cmd.first().map(String::as_str) {
-            Some("btrfs") => self.btrfs(cmd),
+            Some("btrfs" | "findmnt") => RealShell.run(&script(cmd), env).await,
             Some("restic") => self.restic(cmd).await,
             other => output(
                 127,
@@ -50,7 +46,7 @@ impl Shell for FakeShell {
         &self,
         cmd: &[String],
         cwd: Option<&str>,
-        _env: &Env,
+        env: &Env,
         on_line: OnLine<'_>,
     ) -> i32 {
         let line: String = cmd.join(" ").chars().take(120).collect();
@@ -60,13 +56,19 @@ impl Shell for FakeShell {
         );
         match cmd.first().map(String::as_str) {
             Some("bash") => self.bash(cmd, on_line).await,
-            Some("btrbk") => self.btrbk(cmd, on_line).await,
             Some("restic") => self.restic_streaming(cmd, on_line).await,
-            Some("btrfs") => self.btrfs_streaming(cmd, on_line).await,
-            Some("mv") => {
-                pause(150, 0).await;
-                0
-            }
+            Some("btrfs") => RealShell.stream(&script(cmd), cwd, env, on_line).await,
+            // a subvolume is a directory here, so it really moves
+            Some("mv") => match cmd {
+                [_, from, to] => match tokio::fs::rename(from, to).await {
+                    Ok(()) => 0,
+                    Err(e) => {
+                        on_line(Stream::Err, &format!("mv: {e}"));
+                        1
+                    }
+                },
+                _ => 1,
+            },
             other => {
                 on_line(
                     Stream::Err,
@@ -76,51 +78,15 @@ impl Shell for FakeShell {
             }
         }
     }
+
+    async fn pipe(&self, from: &[String], to: &[String], env: &Env, on_line: OnLine<'_>) -> i32 {
+        RealShell
+            .pipe(&script(from), &script(to), env, on_line)
+            .await
+    }
 }
 
 impl FakeShell {
-    fn btrfs(&self, cmd: &[String]) -> Output {
-        let dir = cmd.last().map(String::as_str).unwrap_or_default();
-        let verb = (
-            cmd.get(1).map(String::as_str),
-            cmd.get(2).map(String::as_str),
-        );
-        if verb == (Some("subvolume"), Some("show")) {
-            // every snapshot the listing shows exists, as far as the dev stage is concerned
-            return if dir.contains("/@") {
-                output(0, dir, "")
-            } else {
-                output(1, "", &format!("ERROR: Could not find subvolume {dir}"))
-            };
-        }
-        if verb != (Some("subvolume"), Some("list")) {
-            return output(1, "", "btrfs: unsupported fake invocation");
-        }
-        // the second disk, in the tests' made-up paths and in the seeded sandbox alike
-        let is_replica = dir.contains("/disk-b/");
-        let mut lines = Vec::new();
-        let mut line = |service: &str, time: DateTime<Local>| {
-            let id = 300 + lines.len();
-            lines.push(format!(
-                "ID {id} gen {} cgen {} top level 5 otime {} path .snapshots/@{service}.{}",
-                id * 10,
-                id * 10 - 7,
-                time.format("%Y-%m-%d %H:%M:%S"),
-                stamp(time)
-            ));
-        };
-        for service in SERVICES {
-            // hourly for the last 36 hours; the replica lags one snapshot behind
-            for hours_ago in (if is_replica { 1 } else { 0 })..36 {
-                line(service, self::hours_ago(hours_ago, 5));
-            }
-        }
-        for (service, time) in &self.state.lock().unwrap().created_btrfs {
-            line(service, *time);
-        }
-        output(0, &(lines.join("\n") + "\n"), "")
-    }
-
     async fn restic(&self, cmd: &[String]) -> Output {
         let repo = after(cmd, "-r");
         let service = repo.rsplit('/').next().unwrap_or_default().to_string();
@@ -211,76 +177,6 @@ impl FakeShell {
             }
         }
         0
-    }
-
-    async fn btrbk(&self, cmd: &[String], on_line: OnLine<'_>) -> i32 {
-        let subvolumes = cmd.iter().skip_while(|part| *part != "run").skip(1);
-        let now = Local::now();
-        on_line(Stream::Out, &"-".repeat(80));
-        on_line(
-            Stream::Out,
-            "Backup Summary (btrbk command line client, version 0.32.6)",
-        );
-        let config = tokio::fs::read_to_string(after(cmd, "-c"))
-            .await
-            .unwrap_or_default();
-        let settings = |key: &str| -> Vec<String> {
-            config
-                .lines()
-                .filter_map(|line| line.trim().strip_prefix(key))
-                .map(|value| value.trim().to_string())
-                .collect()
-        };
-        let volume = settings("volume ")
-            .pop()
-            .unwrap_or_else(|| LIVE.to_string());
-        let snapshot_dir = settings("snapshot_dir ")
-            .pop()
-            .unwrap_or_else(|| ".snapshots".to_string());
-        let targets = settings("target ");
-        for subvolume in subvolumes {
-            let name = format!("{subvolume}.{}", stamp(now));
-            pause(400, 400).await;
-            on_line(Stream::Out, &format!("+++ {volume}/{snapshot_dir}/{name}"));
-            for target in &targets {
-                pause(600, 800).await;
-                on_line(Stream::Out, &format!(">>> {target}/{name}"));
-            }
-            let service = subvolume.trim_start_matches('@').to_string();
-            self.state
-                .lock()
-                .unwrap()
-                .created_btrfs
-                .push((service, now));
-        }
-        on_line(Stream::Out, "");
-        on_line(Stream::Out, "NOTE: Dryrun (fake): no retention applied");
-        0
-    }
-
-    async fn btrfs_streaming(&self, cmd: &[String], on_line: OnLine<'_>) -> i32 {
-        pause(300, 500).await;
-        let arg = |index: usize| cmd.get(index).map(String::as_str).unwrap_or_default();
-        match arg(2) {
-            "snapshot" => {
-                on_line(
-                    Stream::Out,
-                    &format!("Create snapshot of '{}' in '{}'", arg(3), arg(4)),
-                );
-                0
-            }
-            "delete" => {
-                on_line(
-                    Stream::Out,
-                    &format!("Delete subvolume 256 (no-commit): '{}'", arg(3)),
-                );
-                0
-            }
-            _ => {
-                on_line(Stream::Err, "btrfs: unsupported fake invocation");
-                1
-            }
-        }
     }
 
     async fn restic_restore(&self, cmd: &[String], service: &str, on_line: OnLine<'_>) -> i32 {
@@ -391,6 +287,15 @@ impl FakeShell {
     }
 }
 
+/// btrfs and findmnt are the fakes in fake/, which work on plain directories
+fn script(cmd: &[String]) -> Vec<String> {
+    let mut cmd = cmd.to_vec();
+    if let Some(program @ ("btrfs" | "findmnt")) = cmd.first().map(String::as_str) {
+        cmd[0] = format!("{}/fake/{program}.sh", env!("CARGO_MANIFEST_DIR"));
+    }
+    cmd
+}
+
 fn output(code: i32, stdout: &str, stderr: &str) -> Output {
     Output {
         code,
@@ -431,11 +336,6 @@ async fn pause(base: u64, jitter: u64) {
         u64::from(Local::now().timestamp_subsec_nanos()) % jitter
     };
     tokio::time::sleep(Duration::from_millis(base + extra)).await;
-}
-
-fn hours_ago(hours: i64, minute: u32) -> DateTime<Local> {
-    let then = Local::now() - chrono::Duration::hours(hours);
-    wall(then, then.hour(), minute, 12)
 }
 
 fn days_ago(days: i64, hour: u32, minute: u32) -> DateTime<Local> {

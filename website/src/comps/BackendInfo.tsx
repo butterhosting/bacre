@@ -15,16 +15,11 @@ export function BackendInfo({ info, schedule }: Props) {
             <Internal.Path path={info.subvolume} />
           </Internal.Fact>
           <Internal.Fact label="retention">
-            keep all for {info.retention.preserveMin}, then {info.retention.preserve.join(", ")}
+            {Prettify.retention(info.retention)}
           </Internal.Fact>
           <Internal.Schedule schedule={schedule} />
           <Internal.Fact label="destinations">
-            <Internal.Blocks
-              blocks={[
-                { name: "snapshots", text: info.snapshots },
-                { name: "targets", text: info.targets.join("\n") },
-              ]}
-            />
+            <Internal.Blocks blocks={[{ name: "destinations", text: info.destinations.join("\n") }]} />
           </Internal.Fact>
           <Internal.Fact label="hooks">
             {info.lifecycle ? (
@@ -48,7 +43,7 @@ export function BackendInfo({ info, schedule }: Props) {
             <Internal.Envset name={info.envset} />
           </Internal.Fact>
           <Internal.Fact label="retention">
-            keep last {info.retention.keepLast}, daily {info.retention.keepDaily}, weekly {info.retention.keepWeekly}, monthly {info.retention.keepMonthly}
+            {Prettify.retention(info.retention)}
           </Internal.Fact>
           <Internal.Schedule schedule={schedule} />
           <Internal.Fact label="sources">

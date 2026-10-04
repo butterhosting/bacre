@@ -5,6 +5,7 @@ mod cron;
 mod failure;
 mod jobs;
 mod models;
+mod retention;
 mod server;
 mod services;
 mod shell;
@@ -20,7 +21,6 @@ use tokio::task::JoinHandle;
 
 use crate::backends::Context;
 use crate::config::{Config, Stage};
-use crate::jobs::dev_jobs;
 use crate::jobs::job_executor::JobExecutor;
 use crate::jobs::job_service::JobService;
 use crate::services::archive_service::ArchiveService;
@@ -29,7 +29,7 @@ use crate::services::change_service::ChangeService;
 use crate::services::sandbox_service::SandboxService;
 use crate::services::scheduler::Scheduler;
 use crate::services::webhook_service::WebhookService;
-use crate::shell::{RealShell, SandboxShell, Shell};
+use crate::shell::{RealShell, Shell};
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -56,10 +56,7 @@ async fn main() -> ExitCode {
 
 async fn run(config_path: &Path) -> Result<(), String> {
     let config = Arc::new(Config::load(config_path)?);
-    let shell: Arc<dyn Shell> = match config.stage {
-        Stage::Dev | Stage::E2e => Arc::new(SandboxShell::default()),
-        Stage::Prod => Arc::new(RealShell),
-    };
+    let shell: Arc<dyn Shell> = Arc::new(RealShell);
 
     let change_service = Arc::new(ChangeService::default());
     let ctx = Context {
@@ -124,24 +121,12 @@ async fn run(config_path: &Path) -> Result<(), String> {
     });
 
     tokio::spawn({
-        let (config, job_service, scheduler) =
-            (config.clone(), job_service.clone(), scheduler.clone());
+        let (stage, scheduler) = (config.stage, scheduler.clone());
         async move {
-            match config.stage {
-                Stage::Dev => {
-                    if let Some(sandbox) = &sandbox_service {
-                        sandbox.seed_if_empty().await;
-                    }
-                    archive_service.start().await;
-                    dev_jobs::seed(&job_service);
-                    scheduler.start();
-                }
-                // the schedules are listed, but nothing fires: a test decides what runs
-                Stage::E2e => archive_service.start().await,
-                Stage::Prod => {
-                    archive_service.start().await;
-                    scheduler.start();
-                }
+            archive_service.start().await;
+            // in e2e the schedules are listed, but nothing fires: a test decides what runs
+            if stage != Stage::E2e {
+                scheduler.start();
             }
         }
     });

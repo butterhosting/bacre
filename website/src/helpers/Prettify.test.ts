@@ -52,6 +52,12 @@ describe("Prettify", () => {
     expect(Prettify.duration(iso(start), null, new Date(start.getTime() - 5000))).toBe("0 s");
   });
 
+  it("should name only the retention rules that keep something", () => {
+    const retention = { keepLast: 6, keepHourly: 24, keepDaily: 7, keepWeekly: 0, keepMonthly: 0 };
+    expect(Prettify.retention(retention)).toBe("keep last 6, hourly 24, daily 7");
+    expect(Prettify.retention({ ...retention, keepLast: 0, keepHourly: 0, keepMonthly: 12 })).toBe("keep daily 7, monthly 12");
+  });
+
   it("should call an offsite backup stale only after two full days", () => {
     const hoursAgo = (hours: number) => iso(new Date(now.getTime() - hours * 3_600_000));
     expect(Prettify.isStale(hoursAgo(47), now)).toBe(false);

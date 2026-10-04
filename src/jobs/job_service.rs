@@ -163,13 +163,6 @@ impl JobService {
         let _ = idle.wait_for(|idle| *idle).await;
     }
 
-    pub fn seed(&self, job: Job) {
-        self.state.lock().unwrap().jobs.push(Tracked {
-            job,
-            subscribers: Vec::new(),
-        });
-    }
-
     pub fn list(&self) -> Vec<Summary> {
         let state = self.state.lock().unwrap();
         let mut jobs: Vec<Summary> = state

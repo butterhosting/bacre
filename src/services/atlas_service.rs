@@ -149,7 +149,7 @@ mod tests {
 
     fn valid(service: &str) -> String {
         format!(
-            "service: {service}\nhome: /opt/{service}\nbtrfs:\n  subvolume: /live/@{service}\n  snapshots: /live/.snapshots\n  retention:\n    preserveMin: 24h\n    preserve: [72h]\n"
+            "service: {service}\nhome: /opt/{service}\nbtrfs:\n  subvolume: /live/@{service}\n  destinations: [/live/.snapshots]\n  retention:\n    keepLast: 3\n"
         )
     }
 
@@ -386,9 +386,8 @@ home: /srv/services/wiki
 btrfs:
   schedule: " 5 * * * * "
   subvolume: /srv/disk-a/@wiki
-  snapshots: /srv/disk-a/.snapshots
-  targets: [/srv/disk-b/.snapshots]
-  retention: { preserveMin: 24h, preserve: [72h, 30d] }
+  destinations: [/srv/disk-a/.snapshots, /srv/disk-b/.snapshots]
+  retention: { keepLast: 6, keepHourly: 24, keepDaily: 7 }
   lifecycle:
     stop: docker compose down
     start: |
@@ -397,7 +396,7 @@ restic:
   schedule: "0 3 * * *"
   repository: s3:example/wiki
   envset: demo
-  retention: { keepLast: 3, keepDaily: 30, keepWeekly: 15, keepMonthly: 12 }
+  retention: { keepLast: 3, keepHourly: 0, keepDaily: 30, keepWeekly: 15, keepMonthly: 12 }
   backupPaths: [/srv/disk-a/@wiki/data]
   lifecycle:
     backupPrepare: docker compose stop main
@@ -417,7 +416,14 @@ restic:
             btrfs.lifecycle.as_ref().unwrap().start,
             "docker compose up --wait"
         );
-        assert_eq!(btrfs.retention.preserve, vec!["72h", "30d"]);
+        assert_eq!(
+            btrfs.destinations,
+            vec!["/srv/disk-a/.snapshots", "/srv/disk-b/.snapshots"]
+        );
+        assert_eq!(
+            (btrfs.retention.keep_hourly, btrfs.retention.keep_weekly),
+            (24, 0)
+        );
         assert_eq!(restic.retention.keep_weekly, 15);
         assert_eq!(
             restic.lifecycle.backup_prepare.as_deref(),
@@ -431,7 +437,7 @@ restic:
         let fixture = Fixture::new();
         fixture.write(
             "bad.yaml",
-            "service: Bad Name\nhome: relative\nbtrfs:\n  subvolume: /live/@x\n  snapshots: /elsewhere/.snapshots\n  retention: { preserveMin: 24h, preserve: [] }\n  schedule: daily\nrestic:\n  repository: r\n  envset: e\n  retention: { keepLast: -1, keepDaily: 1, keepWeekly: 1, keepMonthly: 1 }\n  backupPaths: [relative]\n  lifecycle: { restoreApply: '  ' }\n",
+            "service: Bad Name\nhome: relative\nbtrfs:\n  subvolume: /live/@x\n  snapshots: /elsewhere/.snapshots\n  destinations: [/live/.snapshots, /live/@x/.snapshots, /live/.snapshots]\n  retention: { preserveMin: 24h }\n  schedule: daily\nrestic:\n  repository: r\n  envset: e\n  retention: { keepLast: -1, keepDaily: 1, keepWeekly: 1, keepMonthly: 1 }\n  backupPaths: [relative]\n  lifecycle: { restoreApply: '  ' }\n",
         );
 
         let scan = atlas(&[format!("{}/bad.yaml", fixture.root())], "{ e: {} }")
@@ -442,8 +448,11 @@ restic:
         for part in [
             "service: ",
             "home: ",
-            "btrfs.snapshots: must be on the subvolume's filesystem",
-            "btrfs.retention.preserve: ",
+            "btrfs.snapshots: replaced by destinations",
+            "btrfs.destinations.1: must not be inside the subvolume",
+            "btrfs.destinations.2: is listed twice",
+            "btrfs.retention.preserveMin: btrbk's retention is gone",
+            "btrfs.retention.keepLast: keeps nothing",
             "btrfs.schedule: \"daily\" is not a cron expression",
             "restic.retention.keepLast: ",
             "restic.backupPaths.0: ",

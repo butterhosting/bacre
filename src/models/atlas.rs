@@ -4,6 +4,7 @@ use serde_yaml_ng::{Mapping, Value};
 
 use crate::cron::Cron;
 use crate::models::archives::Backend;
+use crate::retention::Retention;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ServiceConfig {
@@ -29,23 +30,14 @@ impl ServiceConfig {
     }
 }
 
-/// In btrbk's words: the subvolume's directory is the `volume`, `snapshots` is its
-/// `snapshot_dir` (same filesystem, by btrfs's rules), and every entry of `targets` is a
-/// `target` that receives a copy of each snapshot.
 #[derive(Debug, Clone, PartialEq)]
 pub struct BtrfsConfig {
     pub subvolume: String,
-    pub snapshots: String,
-    pub targets: Vec<String>,
-    pub retention: BtrfsRetention,
+    /// Snapshots go into the ones on the subvolume's filesystem, and are sent to the others
+    pub destinations: Vec<String>,
+    pub retention: Retention,
     pub schedule: Option<String>,
     pub lifecycle: Option<BtrfsLifecycle>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct BtrfsRetention {
-    pub preserve_min: String,
-    pub preserve: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -58,18 +50,10 @@ pub struct BtrfsLifecycle {
 pub struct ResticConfig {
     pub repository: String,
     pub envset: String,
-    pub retention: ResticRetention,
+    pub retention: Retention,
     pub schedule: Option<String>,
     pub backup_paths: Vec<String>,
     pub lifecycle: ResticLifecycle,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct ResticRetention {
-    pub keep_last: u32,
-    pub keep_daily: u32,
-    pub keep_weekly: u32,
-    pub keep_monthly: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -142,21 +126,35 @@ fn btrfs(reader: &mut Reader, map: &Mapping) -> Option<BtrfsConfig> {
         }
         valid
     });
-    let snapshots = reader.absolute(map, "snapshots");
-    let targets = reader.absolutes(map, "targets", 0);
-    let retention = reader.block(map, "retention", |reader, map| {
-        let preserve_min = reader
-            .string(map, "preserveMin")
-            .filter(|text| reader.non_empty("preserveMin", text));
-        let preserve = reader.strings(map, "preserve", 1);
-        Some(BtrfsRetention {
-            preserve_min: preserve_min?,
-            preserve: preserve?,
-        })
-    });
-    if retention.is_none() {
-        reader.issue("retention", "expected a mapping");
+    for (old, now) in [("snapshots", "destinations"), ("targets", "destinations")] {
+        if reader.get(map, old).is_some() {
+            reader.issue(old, &format!("replaced by {now}"));
+        }
     }
+    let destinations = reader
+        .absolutes(map, "destinations", 1)
+        .filter(|destinations| {
+            let inside = |destination: &String| {
+                subvolume.as_ref().is_some_and(|subvolume| {
+                    destination == subvolume || destination.starts_with(&format!("{subvolume}/"))
+                })
+            };
+            let mut valid = true;
+            for (index, destination) in destinations.iter().enumerate() {
+                if inside(destination) {
+                    reader.issue(
+                        &format!("destinations.{index}"),
+                        "must not be inside the subvolume",
+                    );
+                    valid = false;
+                } else if destinations[..index].contains(destination) {
+                    reader.issue(&format!("destinations.{index}"), "is listed twice");
+                    valid = false;
+                }
+            }
+            valid
+        });
+    let retention = reader.retention(map);
     let schedule = reader.schedule(map);
     let lifecycle = reader.block(map, "lifecycle", |reader, map| {
         let stop = reader.hook(map, "stop", true);
@@ -167,21 +165,10 @@ fn btrfs(reader: &mut Reader, map: &Mapping) -> Option<BtrfsConfig> {
         })
     });
 
-    if let (Some(subvolume), Some(snapshots)) = (&subvolume, &snapshots) {
-        let parent = &subvolume[..subvolume.rfind('/').unwrap_or(0)];
-        if !snapshots.starts_with(&format!("{parent}/")) {
-            reader.issue(
-                "snapshots",
-                "must be on the subvolume's filesystem (inside the subvolume's parent directory)",
-            );
-        }
-    }
-
     Some(BtrfsConfig {
         subvolume: subvolume?,
-        snapshots: snapshots?,
-        targets: targets?,
-        retention: retention??,
+        destinations: destinations?,
+        retention: retention?,
         schedule,
         lifecycle: lifecycle.flatten(),
     })
@@ -194,21 +181,7 @@ fn restic(reader: &mut Reader, map: &Mapping) -> Option<ResticConfig> {
     let envset = reader
         .string(map, "envset")
         .filter(|text| reader.non_empty("envset", text));
-    let retention = reader.block(map, "retention", |reader, map| {
-        let keep_last = reader.count(map, "keepLast");
-        let keep_daily = reader.count(map, "keepDaily");
-        let keep_weekly = reader.count(map, "keepWeekly");
-        let keep_monthly = reader.count(map, "keepMonthly");
-        Some(ResticRetention {
-            keep_last: keep_last?,
-            keep_daily: keep_daily?,
-            keep_weekly: keep_weekly?,
-            keep_monthly: keep_monthly?,
-        })
-    });
-    if retention.is_none() {
-        reader.issue("retention", "expected a mapping");
-    }
+    let retention = reader.retention(map);
     let schedule = reader.schedule(map);
     let backup_paths = reader.absolutes(map, "backupPaths", 1);
     let lifecycle = reader.block(map, "lifecycle", |reader, map| {
@@ -222,7 +195,7 @@ fn restic(reader: &mut Reader, map: &Mapping) -> Option<ResticConfig> {
     Some(ResticConfig {
         repository: repository?,
         envset: envset?,
-        retention: retention??,
+        retention: retention?,
         schedule,
         backup_paths: backup_paths?,
         lifecycle: lifecycle.flatten().unwrap_or_default(),
@@ -333,15 +306,42 @@ impl Reader {
         valid.then_some(paths)
     }
 
+    /// Absent counts as zero
     fn count(&mut self, map: &Mapping, key: &str) -> Option<u32> {
-        let number = self
-            .get(map, key)
-            .and_then(Value::as_u64)
-            .and_then(|n| u32::try_from(n).ok());
+        let Some(value) = self.get(map, key) else {
+            return Some(0);
+        };
+        let number = value.as_u64().and_then(|n| u32::try_from(n).ok());
         if number.is_none() {
             self.issue(key, "expected a whole number, zero or more");
         }
         number
+    }
+
+    fn retention(&mut self, map: &Mapping) -> Option<Retention> {
+        let Some(block) = self.block(map, "retention", |reader, map| {
+            for old in ["preserveMin", "preserve"] {
+                if reader.get(map, old).is_some() {
+                    reader.issue(old, "btrbk's retention is gone: use keepLast, keepHourly, keepDaily, keepWeekly, keepMonthly");
+                }
+            }
+            let retention = Retention {
+                keep_last: reader.count(map, "keepLast")?,
+                keep_hourly: reader.count(map, "keepHourly")?,
+                keep_daily: reader.count(map, "keepDaily")?,
+                keep_weekly: reader.count(map, "keepWeekly")?,
+                keep_monthly: reader.count(map, "keepMonthly")?,
+            };
+            if !retention.keeps_anything() {
+                reader.issue("keepLast", "keeps nothing: set at least one of keepLast, keepHourly, keepDaily, keepWeekly, keepMonthly");
+                return None;
+            }
+            Some(retention)
+        }) else {
+            self.issue("retention", "expected a mapping");
+            return None;
+        };
+        block
     }
 
     fn hook(&mut self, map: &Mapping, key: &str, required: bool) -> Option<String> {

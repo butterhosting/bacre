@@ -2,9 +2,7 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
 use super::{Context, Listing};
-use crate::models::archives::{
-    Backend, BackendInfo, HooksInfo, ResticRetentionInfo, Snapshot, SnapshotDetails, iso,
-};
+use crate::models::archives::{Backend, BackendInfo, HooksInfo, Snapshot, SnapshotDetails, iso};
 use crate::models::atlas::{Entry, ResticConfig};
 use crate::shell::Env;
 
@@ -52,12 +50,7 @@ pub fn describe(entry: &Entry) -> Result<BackendInfo, String> {
     Ok(BackendInfo::Restic {
         repository: config.repository.clone(),
         envset: config.envset.clone(),
-        retention: ResticRetentionInfo {
-            keep_last: config.retention.keep_last,
-            keep_daily: config.retention.keep_daily,
-            keep_weekly: config.retention.keep_weekly,
-            keep_monthly: config.retention.keep_monthly,
-        },
+        retention: config.retention,
         paths: config.backup_paths.clone(),
         hooks: HooksInfo {
             prepare: config.lifecycle.backup_prepare.clone(),

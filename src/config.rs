@@ -22,7 +22,7 @@ pub struct Config {
 #[serde(rename_all = "lowercase")]
 pub enum Stage {
     Dev,
-    /// Like dev, but nothing happens by itself: no first seed, no sample jobs, no schedules firing
+    /// Like dev, but no schedule fires
     E2e,
     #[default]
     Prod,

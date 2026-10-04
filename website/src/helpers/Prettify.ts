@@ -1,3 +1,5 @@
+import type { Archives } from "@/models/Archives";
+
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const FULL_MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -65,6 +67,20 @@ export namespace Prettify {
   export function clock(iso: string): string {
     const d = new Date(iso);
     return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
+  export function retention(retention: Archives.Retention): string {
+    const rules = [
+      ["last", retention.keepLast],
+      ["hourly", retention.keepHourly],
+      ["daily", retention.keepDaily],
+      ["weekly", retention.keepWeekly],
+      ["monthly", retention.keepMonthly],
+    ] as const;
+    return `keep ${rules
+      .filter(([, count]) => count > 0)
+      .map(([name, count]) => `${name} ${count}`)
+      .join(", ")}`;
   }
 
   export function isStale(iso: string, now: Date = new Date()): boolean {

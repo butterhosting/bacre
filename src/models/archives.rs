@@ -6,6 +6,8 @@ use std::collections::BTreeMap;
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::retention::Retention;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Backend {
@@ -47,7 +49,10 @@ pub struct Snapshot {
 #[serde(untagged)]
 pub enum SnapshotDetails {
     #[serde(rename_all = "camelCase")]
-    Btrfs { on_targets: usize, targets: usize },
+    Btrfs {
+        on_destinations: usize,
+        destinations: usize,
+    },
     Restic {
         tags: Vec<String>,
         paths: Vec<String>,
@@ -59,40 +64,23 @@ pub enum SnapshotDetails {
 pub enum BackendInfo {
     Btrfs {
         subvolume: String,
-        snapshots: String,
-        targets: Vec<String>,
-        retention: BtrfsRetentionInfo,
+        destinations: Vec<String>,
+        retention: Retention,
         lifecycle: Option<LifecycleInfo>,
     },
     Restic {
         repository: String,
         envset: String,
-        retention: ResticRetentionInfo,
+        retention: Retention,
         paths: Vec<String>,
         hooks: HooksInfo,
     },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BtrfsRetentionInfo {
-    pub preserve_min: String,
-    pub preserve: Vec<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct LifecycleInfo {
     pub stop: String,
     pub start: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ResticRetentionInfo {
-    pub keep_last: u32,
-    pub keep_daily: u32,
-    pub keep_weekly: u32,
-    pub keep_monthly: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
