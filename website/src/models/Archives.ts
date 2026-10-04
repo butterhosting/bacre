@@ -16,8 +16,8 @@ export namespace Archives {
       backend: z.literal("btrfs"),
       ...Common,
       details: z.object({
-        onDestinations: z.number().int().nonnegative(),
-        destinations: z.number().int().nonnegative(),
+        onSnapshotPaths: z.number().int().nonnegative(),
+        snapshotPaths: z.number().int().nonnegative(),
       }),
     }),
     z.object({
@@ -44,7 +44,7 @@ export namespace Archives {
     z.object({
       backend: z.literal("btrfs"),
       subvolume: z.string(),
-      destinations: z.array(z.string()),
+      snapshotPaths: z.array(z.string()),
       retention: Retention,
       lifecycle: z.object({ stop: z.string(), start: z.string() }).nullable(),
     }),

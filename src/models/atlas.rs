@@ -34,7 +34,7 @@ impl ServiceConfig {
 pub struct BtrfsConfig {
     pub subvolume: String,
     /// Snapshots go into the ones on the subvolume's filesystem, and are sent to the others
-    pub destinations: Vec<String>,
+    pub snapshot_paths: Vec<String>,
     pub retention: Retention,
     pub schedule: Option<String>,
     pub lifecycle: Option<BtrfsLifecycle>,
@@ -126,29 +126,30 @@ fn btrfs(reader: &mut Reader, map: &Mapping) -> Option<BtrfsConfig> {
         }
         valid
     });
-    for (old, now) in [("snapshots", "destinations"), ("targets", "destinations")] {
+    for (old, now) in [("snapshots", "snapshotPaths"), ("targets", "snapshotPaths")] {
         if reader.get(map, old).is_some() {
             reader.issue(old, &format!("replaced by {now}"));
         }
     }
-    let destinations = reader
-        .absolutes(map, "destinations", 1)
-        .filter(|destinations| {
-            let inside = |destination: &String| {
+    let snapshot_paths = reader
+        .absolutes(map, "snapshotPaths", 1)
+        .filter(|snapshot_paths| {
+            let inside = |snapshot_path: &String| {
                 subvolume.as_ref().is_some_and(|subvolume| {
-                    destination == subvolume || destination.starts_with(&format!("{subvolume}/"))
+                    snapshot_path == subvolume
+                        || snapshot_path.starts_with(&format!("{subvolume}/"))
                 })
             };
             let mut valid = true;
-            for (index, destination) in destinations.iter().enumerate() {
-                if inside(destination) {
+            for (index, snapshot_path) in snapshot_paths.iter().enumerate() {
+                if inside(snapshot_path) {
                     reader.issue(
-                        &format!("destinations.{index}"),
+                        &format!("snapshotPaths.{index}"),
                         "must not be inside the subvolume",
                     );
                     valid = false;
-                } else if destinations[..index].contains(destination) {
-                    reader.issue(&format!("destinations.{index}"), "is listed twice");
+                } else if snapshot_paths[..index].contains(snapshot_path) {
+                    reader.issue(&format!("snapshotPaths.{index}"), "is listed twice");
                     valid = false;
                 }
             }
@@ -167,7 +168,7 @@ fn btrfs(reader: &mut Reader, map: &Mapping) -> Option<BtrfsConfig> {
 
     Some(BtrfsConfig {
         subvolume: subvolume?,
-        destinations: destinations?,
+        snapshot_paths: snapshot_paths?,
         retention: retention?,
         schedule,
         lifecycle: lifecycle.flatten(),

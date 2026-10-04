@@ -53,20 +53,20 @@ pub async fn restore(ctx: &Context, entry: &Entry, handle: &str, log: &Log) -> O
 async fn source(ctx: &Context, config: &BtrfsConfig, handle: &str) -> Outcome<String> {
     let live = btrfs::filesystem(ctx, &config.subvolume).await?;
     let mut elsewhere = Vec::new();
-    for destination in &config.destinations {
-        if !btrfs::names(destination, btrfs::basename(&config.subvolume))
+    for snapshot_path in &config.snapshot_paths {
+        if !btrfs::names(snapshot_path, btrfs::basename(&config.subvolume))
             .await
             .is_ok_and(|names| names.contains(handle))
         {
             continue;
         }
-        if btrfs::filesystem(ctx, destination).await? == live {
-            return Ok(format!("{destination}/{handle}"));
+        if btrfs::filesystem(ctx, snapshot_path).await? == live {
+            return Ok(format!("{snapshot_path}/{handle}"));
         }
-        elsewhere.push(destination.as_str());
+        elsewhere.push(snapshot_path.as_str());
     }
     Err(Failure::new(match elsewhere.is_empty() {
-        true => format!("{handle} is in none of the destinations"),
+        true => format!("{handle} is in none of the snapshot paths"),
         false => format!(
             "{handle} is only in {}, on another filesystem than {}; restoring from there is not supported yet",
             elsewhere.join(" and "),

@@ -1,4 +1,4 @@
-//! A snapshot is taken into the one destination on the subvolume's filesystem, then sent on to
+//! A snapshot is taken into the one snapshot path on the subvolume's filesystem, then sent on to
 //! the others. A send is incremental against the newest snapshot both sides have; a copy only
 //! counts as "had" when btrfs recorded it as received from that very snapshot, and retention
 //! never deletes that pair, so the next send has its parent.
@@ -58,25 +58,25 @@ async fn snapshot(
     let name = btrfs::basename(&config.subvolume);
     let mut failures = Vec::new();
     let (layout, unreachable) = layout(ctx, config).await?;
-    for (destination, reason) in unreachable {
-        log.err(format!("Skipping {destination}: {reason}"));
+    for (snapshot_path, reason) in unreachable {
+        log.err(format!("Skipping {snapshot_path}: {reason}"));
         failures.push(reason);
     }
 
     let mut others = Vec::new();
-    for destination in &layout.others {
-        match clean(ctx, destination, name, log).await {
-            Ok(()) => others.push(destination.as_str()),
+    for snapshot_path in &layout.others {
+        match clean(ctx, snapshot_path, name, log).await {
+            Ok(()) => others.push(snapshot_path.as_str()),
             Err(reason) => {
-                log.err(format!("Skipping {destination}: {reason}"));
+                log.err(format!("Skipping {snapshot_path}: {reason}"));
                 failures.push(reason);
             }
         }
     }
 
     let mut taken = btrfs::names(&layout.local, name).await?;
-    for destination in &others {
-        taken.extend(btrfs::names(destination, name).await?);
+    for snapshot_path in &others {
+        taken.extend(btrfs::names(snapshot_path, name).await?);
     }
     let new_name = next_name(name, now, &taken);
     let new_path = format!("{}/{new_name}", layout.local);
@@ -124,13 +124,13 @@ async fn snapshot(
         .iter()
         .find(|snap| snap.name == new_name)
         .ok_or_else(|| format!("{new_path} is missing right after it was made"))?;
-    for destination in &others {
-        let sent = match btrfs::inventory(ctx, destination, name).await {
+    for snapshot_path in &others {
+        let sent = match btrfs::inventory(ctx, snapshot_path, name).await {
             Ok(remote) => {
                 send(
                     ctx,
                     &layout.local,
-                    destination,
+                    snapshot_path,
                     new,
                     parent(&local, &remote),
                     log,
@@ -143,18 +143,18 @@ async fn snapshot(
             log.err(&reason);
             failures.push(reason);
             // a receive that stopped half way leaves a copy that must not count as one
-            let _ = clean(ctx, destination, name, log).await;
+            let _ = clean(ctx, snapshot_path, name, log).await;
         }
     }
 
     let mut protected = BTreeSet::new();
     let mut remotes = Vec::new();
-    for destination in &others {
-        match btrfs::inventory(ctx, destination, name).await {
+    for snapshot_path in &others {
+        match btrfs::inventory(ctx, snapshot_path, name).await {
             Ok(remote) => {
                 let kept = parent(&local, &remote).map(|snap| snap.name.clone());
                 protected.extend(kept.clone());
-                remotes.push((destination, remote, kept));
+                remotes.push((snapshot_path, remote, kept));
             }
             Err(reason) => failures.push(reason),
         }
@@ -171,10 +171,10 @@ async fn snapshot(
     {
         failures.push(reason);
     }
-    for (destination, remote, kept) in remotes {
+    for (snapshot_path, remote, kept) in remotes {
         if let Err(reason) = prune(
             ctx,
-            destination,
+            snapshot_path,
             &remote,
             &config.retention,
             &kept.into_iter().collect(),
@@ -192,19 +192,19 @@ async fn snapshot(
     }
 }
 
-/// Which destination is on the subvolume's filesystem, and which cannot be reached at all
+/// Which snapshot path is on the subvolume's filesystem, and which cannot be reached at all
 async fn layout(ctx: &Context, config: &BtrfsConfig) -> Outcome<(Layout, Vec<(String, String)>)> {
     let live = btrfs::filesystem(ctx, &config.subvolume).await?;
     let (mut local, mut others, mut unreachable) = (Vec::new(), Vec::new(), Vec::new());
-    for destination in &config.destinations {
-        let found = match tokio::fs::metadata(destination).await {
-            Ok(meta) if meta.is_dir() => btrfs::filesystem(ctx, destination).await,
-            _ => Err(format!("{destination} is not there")),
+    for snapshot_path in &config.snapshot_paths {
+        let found = match tokio::fs::metadata(snapshot_path).await {
+            Ok(meta) if meta.is_dir() => btrfs::filesystem(ctx, snapshot_path).await,
+            _ => Err(format!("{snapshot_path} is not there")),
         };
         match found {
-            Ok(uuid) if uuid == live => local.push(destination.clone()),
-            Ok(_) => others.push(destination.clone()),
-            Err(reason) => unreachable.push((destination.clone(), reason)),
+            Ok(uuid) if uuid == live => local.push(snapshot_path.clone()),
+            Ok(_) => others.push(snapshot_path.clone()),
+            Err(reason) => unreachable.push((snapshot_path.clone(), reason)),
         }
     }
     match local.len() {
@@ -216,7 +216,7 @@ async fn layout(ctx: &Context, config: &BtrfsConfig) -> Outcome<(Layout, Vec<(St
             unreachable,
         )),
         0 => Err(Failure::new(format!(
-            "none of the destinations is on the filesystem of {}, so there is nowhere to take a snapshot{}",
+            "none of the snapshot paths is on the filesystem of {}, so there is nowhere to take a snapshot{}",
             config.subvolume,
             unreachable
                 .iter()
@@ -224,7 +224,7 @@ async fn layout(ctx: &Context, config: &BtrfsConfig) -> Outcome<(Layout, Vec<(St
                 .collect::<String>()
         ))),
         _ => Err(Failure::new(format!(
-            "{} are all on the filesystem of {}; only one destination may be",
+            "{} are all on the filesystem of {}; only one snapshot path may be",
             local.join(" and "),
             config.subvolume
         ))),
@@ -272,17 +272,17 @@ async fn send(
     }
 }
 
-async fn clean(ctx: &Context, destination: &str, name: &str, log: &Log) -> Result<(), String> {
-    let remote = btrfs::inventory(ctx, destination, name).await?;
+async fn clean(ctx: &Context, snapshot_path: &str, name: &str, log: &Log) -> Result<(), String> {
+    let remote = btrfs::inventory(ctx, snapshot_path, name).await?;
     let half: Vec<&Snap> = half_received(&remote);
     if half.is_empty() {
         return Ok(());
     }
     delete(
         ctx,
-        destination,
+        snapshot_path,
         &half,
-        &format!("Deleting what an interrupted send left in {destination}"),
+        &format!("Deleting what an interrupted send left in {snapshot_path}"),
         log,
     )
     .await
@@ -290,7 +290,7 @@ async fn clean(ctx: &Context, destination: &str, name: &str, log: &Log) -> Resul
 
 async fn prune(
     ctx: &Context,
-    destination: &str,
+    snapshot_path: &str,
     snaps: &[Snap],
     retention: &Retention,
     protected: &BTreeSet<String>,
@@ -302,10 +302,10 @@ async fn prune(
     }
     delete(
         ctx,
-        destination,
+        snapshot_path,
         &doomed,
         &format!(
-            "Pruning {} of {} snapshots in {destination}",
+            "Pruning {} of {} snapshots in {snapshot_path}",
             doomed.len(),
             snaps.len()
         ),
@@ -316,7 +316,7 @@ async fn prune(
 
 async fn delete(
     ctx: &Context,
-    destination: &str,
+    snapshot_path: &str,
     snaps: &[&Snap],
     label: &str,
     log: &Log,
@@ -325,7 +325,7 @@ async fn delete(
     command.extend(
         snaps
             .iter()
-            .map(|snap| format!("{destination}/{}", snap.name)),
+            .map(|snap| format!("{snapshot_path}/{}", snap.name)),
     );
     hooks::exec(ctx, &command, label, log)
         .await
@@ -514,7 +514,7 @@ mod tests {
             std::fs::write(format!("{root}/disk-a/@wiki/page"), "first").unwrap();
             let config = BtrfsConfig {
                 subvolume: format!("{root}/disk-a/@wiki"),
-                destinations: ["disk-b", "disk-a", "disk-c"]
+                snapshot_paths: ["disk-b", "disk-a", "disk-c"]
                     .iter()
                     .map(|disk| format!("{root}/{disk}/.snapshots"))
                     .collect(),
@@ -612,7 +612,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_go_on_without_a_destination_that_failed_and_clear_its_half_copy() {
+    async fn should_go_on_without_a_snapshot_path_that_failed_and_clear_its_half_copy() {
         let disks = Disks::new(5);
         disks.run("20261001T0100").await.0.unwrap();
 
@@ -636,7 +636,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_prune_every_destination_but_keep_the_parent_a_lagging_one_needs() {
+    async fn should_prune_every_snapshot_path_but_keep_the_parent_a_lagging_one_needs() {
         let disks = Disks::new(2);
         disks.run("20261001T0100").await.0.unwrap();
 
@@ -661,18 +661,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn should_refuse_when_no_destination_is_on_the_subvolumes_filesystem() {
+    async fn should_refuse_when_no_snapshot_path_is_on_the_subvolumes_filesystem() {
         let mut disks = Disks::new(2);
         let config = disks.entry.config.btrfs.as_mut().unwrap();
         config
-            .destinations
-            .retain(|destination| !destination.contains("disk-a"));
+            .snapshot_paths
+            .retain(|snapshot_path| !snapshot_path.contains("disk-a"));
         let (refused, _) = disks.run("20261001T0100").await;
         assert!(
             refused
                 .unwrap_err()
                 .message
-                .starts_with("none of the destinations is on the filesystem of")
+                .starts_with("none of the snapshot paths is on the filesystem of")
         );
         assert!(disks.on("disk-b").is_empty());
     }

@@ -19,7 +19,7 @@ export function BackendInfo({ info, schedule }: Props) {
           </Internal.Fact>
           <Internal.Schedule schedule={schedule} />
           <Internal.Fact label="destinations">
-            <Internal.Blocks blocks={[{ name: "destinations", text: info.destinations.join("\n") }]} />
+            <Internal.Blocks blocks={[{ name: "snapshotPaths", text: info.snapshotPaths.join("\n") }]} />
           </Internal.Fact>
           <Internal.Fact label="hooks">
             {info.lifecycle ? (

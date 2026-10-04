@@ -352,7 +352,7 @@ mod tests {
             .iter()
             .map(|(service, plan)| {
                 let yaml = format!(
-                    "service: {service}\nhome: /srv/{service}\nbtrfs:\n{}  subvolume: /disk/@{service}\n  destinations: [/disk/.snapshots]\n  retention: {{ keepLast: 1 }}\nrestic:\n{}  repository: s3:x/{service}\n  envset: c\n  retention: {{ keepLast: 1, keepDaily: 1, keepWeekly: 1, keepMonthly: 1 }}\n  backupPaths: [/data]\n",
+                    "service: {service}\nhome: /srv/{service}\nbtrfs:\n{}  subvolume: /disk/@{service}\n  snapshotPaths: [/disk/.snapshots]\n  retention: {{ keepLast: 1 }}\nrestic:\n{}  repository: s3:x/{service}\n  envset: c\n  retention: {{ keepLast: 1, keepDaily: 1, keepWeekly: 1, keepMonthly: 1 }}\n  backupPaths: [/data]\n",
                     schedule(plan.btrfs),
                     schedule(plan.restic)
                 );

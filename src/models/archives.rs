@@ -50,8 +50,8 @@ pub struct Snapshot {
 pub enum SnapshotDetails {
     #[serde(rename_all = "camelCase")]
     Btrfs {
-        on_destinations: usize,
-        destinations: usize,
+        on_snapshot_paths: usize,
+        snapshot_paths: usize,
     },
     Restic {
         tags: Vec<String>,
@@ -62,9 +62,10 @@ pub enum SnapshotDetails {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "backend", rename_all = "lowercase")]
 pub enum BackendInfo {
+    #[serde(rename_all = "camelCase")]
     Btrfs {
         subvolume: String,
-        destinations: Vec<String>,
+        snapshot_paths: Vec<String>,
         retention: Retention,
         lifecycle: Option<LifecycleInfo>,
     },

@@ -511,7 +511,7 @@ fn bacre_yaml(world: &World, spec: &Spec) -> String {
         _ => "    keepLast: 6\n    keepHourly: 24\n    keepDaily: 7\n",
     };
     yaml += &format!(
-        "  subvolume: {live}\n  destinations:\n    - {}\n    - {}\n  retention:\n{retention}",
+        "  subvolume: {live}\n  snapshotPaths:\n    - {}\n    - {}\n  retention:\n{retention}",
         show(&world.snapshots),
         show(&world.target)
     );

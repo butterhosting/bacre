@@ -267,14 +267,14 @@ namespace Internal {
   function Details({ snapshot }: DetailsProps) {
     switch (snapshot.backend) {
       case "btrfs": {
-        const { onDestinations, destinations } = snapshot.details;
-        const missing = destinations - onDestinations;
+        const { onSnapshotPaths, snapshotPaths } = snapshot.details;
+        const missing = snapshotPaths - onSnapshotPaths;
         if (missing <= 0) {
           return null;
         }
         return (
           <span className="font-semibold text-c-warn">
-            missing in {missing} of {destinations} destinations
+            missing in {missing} of {snapshotPaths} snapshot paths
           </span>
         );
       }

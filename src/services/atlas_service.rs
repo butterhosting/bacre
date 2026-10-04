@@ -149,7 +149,7 @@ mod tests {
 
     fn valid(service: &str) -> String {
         format!(
-            "service: {service}\nhome: /opt/{service}\nbtrfs:\n  subvolume: /live/@{service}\n  destinations: [/live/.snapshots]\n  retention:\n    keepLast: 3\n"
+            "service: {service}\nhome: /opt/{service}\nbtrfs:\n  subvolume: /live/@{service}\n  snapshotPaths: [/live/.snapshots]\n  retention:\n    keepLast: 3\n"
         )
     }
 
@@ -386,7 +386,7 @@ home: /srv/services/wiki
 btrfs:
   schedule: " 5 * * * * "
   subvolume: /srv/disk-a/@wiki
-  destinations: [/srv/disk-a/.snapshots, /srv/disk-b/.snapshots]
+  snapshotPaths: [/srv/disk-a/.snapshots, /srv/disk-b/.snapshots]
   retention: { keepLast: 6, keepHourly: 24, keepDaily: 7 }
   lifecycle:
     stop: docker compose down
@@ -417,7 +417,7 @@ restic:
             "docker compose up --wait"
         );
         assert_eq!(
-            btrfs.destinations,
+            btrfs.snapshot_paths,
             vec!["/srv/disk-a/.snapshots", "/srv/disk-b/.snapshots"]
         );
         assert_eq!(
@@ -437,7 +437,7 @@ restic:
         let fixture = Fixture::new();
         fixture.write(
             "bad.yaml",
-            "service: Bad Name\nhome: relative\nbtrfs:\n  subvolume: /live/@x\n  snapshots: /elsewhere/.snapshots\n  destinations: [/live/.snapshots, /live/@x/.snapshots, /live/.snapshots]\n  retention: { preserveMin: 24h }\n  schedule: daily\nrestic:\n  repository: r\n  envset: e\n  retention: { keepLast: -1, keepDaily: 1, keepWeekly: 1, keepMonthly: 1 }\n  backupPaths: [relative]\n  lifecycle: { restoreApply: '  ' }\n",
+            "service: Bad Name\nhome: relative\nbtrfs:\n  subvolume: /live/@x\n  snapshots: /elsewhere/.snapshots\n  snapshotPaths: [/live/.snapshots, /live/@x/.snapshots, /live/.snapshots]\n  retention: { preserveMin: 24h }\n  schedule: daily\nrestic:\n  repository: r\n  envset: e\n  retention: { keepLast: -1, keepDaily: 1, keepWeekly: 1, keepMonthly: 1 }\n  backupPaths: [relative]\n  lifecycle: { restoreApply: '  ' }\n",
         );
 
         let scan = atlas(&[format!("{}/bad.yaml", fixture.root())], "{ e: {} }")
@@ -448,9 +448,9 @@ restic:
         for part in [
             "service: ",
             "home: ",
-            "btrfs.snapshots: replaced by destinations",
-            "btrfs.destinations.1: must not be inside the subvolume",
-            "btrfs.destinations.2: is listed twice",
+            "btrfs.snapshots: replaced by snapshotPaths",
+            "btrfs.snapshotPaths.1: must not be inside the subvolume",
+            "btrfs.snapshotPaths.2: is listed twice",
             "btrfs.retention.preserveMin: btrbk's retention is gone",
             "btrfs.retention.keepLast: keeps nothing",
             "btrfs.schedule: \"daily\" is not a cron expression",

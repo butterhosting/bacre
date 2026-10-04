@@ -283,7 +283,7 @@ mod tests {
     /// btrfs on two fake disks under `root`; restic's paths are the ones the fake restic answers with
     fn wiki(root: &str) -> String {
         format!(
-            "service: wiki\nhome: /srv/demo/services/wiki\nbtrfs:\n  schedule: '5 * * * *'\n  subvolume: {root}/disk-a/@wiki\n  destinations: [{root}/disk-a/.snapshots, {root}/disk-b/.snapshots]\n  retention: {{ keepLast: 3, keepDaily: 7 }}\n  lifecycle: {{ stop: docker compose down, start: docker compose up --wait }}\n{RESTIC}"
+            "service: wiki\nhome: /srv/demo/services/wiki\nbtrfs:\n  schedule: '5 * * * *'\n  subvolume: {root}/disk-a/@wiki\n  snapshotPaths: [{root}/disk-a/.snapshots, {root}/disk-b/.snapshots]\n  retention: {{ keepLast: 3, keepDaily: 7 }}\n  lifecycle: {{ stop: docker compose down, start: docker compose up --wait }}\n{RESTIC}"
         )
     }
 
@@ -389,6 +389,12 @@ mod tests {
         assert_eq!(wiki["backends"]["btrfs"]["state"], "ok");
         assert_eq!(wiki["backends"]["btrfs"]["info"]["backend"], "btrfs");
         assert_eq!(
+            wiki["backends"]["btrfs"]["info"]["snapshotPaths"]
+                .as_array()
+                .map(Vec::len),
+            Some(2)
+        );
+        assert_eq!(
             wiki["backends"]["btrfs"]["info"]["retention"],
             json!({ "keepLast": 3, "keepHourly": 0, "keepDaily": 7, "keepWeekly": 0, "keepMonthly": 0 })
         );
@@ -412,7 +418,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             btrfs["details"],
-            json!({ "onDestinations": 1, "destinations": 2 })
+            json!({ "onSnapshotPaths": 1, "snapshotPaths": 2 })
         );
         assert_eq!(btrfs["handle"], "@wiki.20261001T0305");
         let restic = wiki["snapshots"]

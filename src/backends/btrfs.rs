@@ -23,7 +23,7 @@ pub fn describe(entry: &Entry) -> Result<BackendInfo, String> {
     let config = config(entry)?;
     Ok(BackendInfo::Btrfs {
         subvolume: config.subvolume.clone(),
-        destinations: config.destinations.clone(),
+        snapshot_paths: config.snapshot_paths.clone(),
         retention: config.retention,
         lifecycle: config.lifecycle.as_ref().map(|lifecycle| LifecycleInfo {
             stop: lifecycle.stop.clone(),
@@ -36,8 +36,8 @@ pub async fn list(_ctx: &Context, entry: &Entry) -> Result<Listing, String> {
     let config = config(entry)?;
     let name = basename(&config.subvolume);
     let mut found = Vec::new();
-    for destination in &config.destinations {
-        found.push(names(destination, name).await?);
+    for snapshot_path in &config.snapshot_paths {
+        found.push(names(snapshot_path, name).await?);
     }
     let all: BTreeSet<&String> = found.iter().flatten().collect();
 
@@ -50,11 +50,11 @@ pub async fn list(_ctx: &Context, entry: &Entry) -> Result<Listing, String> {
                 service: entry.config.service.clone(),
                 time: iso(cron::local(time).with_timezone(&Utc)),
                 details: SnapshotDetails::Btrfs {
-                    on_destinations: found
+                    on_snapshot_paths: found
                         .iter()
                         .filter(|names| names.contains(snapshot))
                         .count(),
-                    destinations: config.destinations.len(),
+                    snapshot_paths: config.snapshot_paths.len(),
                 },
                 handle: snapshot.clone(),
             })

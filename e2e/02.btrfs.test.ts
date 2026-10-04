@@ -41,7 +41,7 @@ test("a snapshot that never reached a disk is shown, and the next one builds on 
   expect(shared).not.toBe(unsent);
   await page.goto("services/dns");
   const row = page.getByTestId("btrfs-card").getByTestId("snapshot").filter({ hasText: unsent });
-  await expect(row).toContainText("missing in 1 of 2 destinations");
+  await expect(row).toContainText("missing in 1 of 2 snapshot paths");
 
   // when
   await BackupFlow.start(page, { backend: "btrfs", services: ["dns"] });
@@ -116,7 +116,7 @@ test("a send that stops half way fails the job but leaves no half copy behind", 
   expect(await SandboxBoundary.snapshots("disk-b", "wiki")).toEqual(replica);
   const unsent = (await SandboxBoundary.snapshots("disk-a", "wiki")).at(-1)!;
   await page.goto("services/wiki");
-  await expect(page.getByTestId("btrfs-card").getByTestId("snapshot").filter({ hasText: unsent })).toContainText("missing in 1 of 2 destinations");
+  await expect(page.getByTestId("btrfs-card").getByTestId("snapshot").filter({ hasText: unsent })).toContainText("missing in 1 of 2 snapshot paths");
 });
 
 test("retention never deletes the snapshot a lagging disk needs to catch up", async ({ page }) => {
