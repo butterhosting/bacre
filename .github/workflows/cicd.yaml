@@ -66,8 +66,8 @@ jobs:
           path: dist/
           retention-days: 1
 
-  release:
-    name: "Release"
+  cd:
+    name: "CD Pipeline"
     if: github.ref_type == 'tag'
     needs: ci
     runs-on: ubuntu-latest
