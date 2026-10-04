@@ -5,16 +5,21 @@ import { Yesttp } from "yesttp";
 import { ArchiveClient } from "./clients/ArchiveClient";
 import { ChangeClient } from "./clients/ChangeClient";
 import { JobClient } from "./clients/JobClient";
+import { RestrictedClient } from "./clients/RestrictedClient";
 
 export class ClientRegistry {
   private readonly registry: Record<string, any> = {};
 
-  private constructor() {
-    // Frontend and backend are served from the same origin, so a relative base is all the configuration there is
-    const yesttp = (this.registry[Yesttp.name] = new Yesttp({ baseUrl: "/api" }));
+  private constructor(
+    yesttp: Yesttp,
+    /** What the server said about itself when the page started */
+    public readonly env: Env.Type,
+  ) {
+    this.registry[Yesttp.name] = yesttp;
     this.registry[ArchiveClient.name] = new ArchiveClient(yesttp);
     this.registry[JobClient.name] = new JobClient(yesttp);
     this.registry[ChangeClient.name] = new ChangeClient();
+    this.registry[RestrictedClient.name] = new RestrictedClient(yesttp);
   }
 
   /**
@@ -23,10 +28,12 @@ export class ClientRegistry {
    * password asks here.
    */
   public static async bootstrap(): Promise<ClientRegistry> {
-    const registry = new ClientRegistry();
-    const { json } = await registry.get(Yesttp).get<unknown>("/env");
-    this.printEnv(Env.parse(json));
-    return registry;
+    // Frontend and backend are served from the same origin, so a relative base is all the configuration there is
+    const yesttp = new Yesttp({ baseUrl: "/api" });
+    const { json } = await yesttp.get<unknown>("/env");
+    const env = Env.parse(json);
+    this.printEnv(env);
+    return new ClientRegistry(yesttp, env);
   }
 
   private static printEnv(env: Env.Type) {

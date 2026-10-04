@@ -1,8 +1,12 @@
 import type { Archives } from "@/models/Archives";
 import clsx from "clsx";
-import type { ComponentProps, ReactNode } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
 import { Link, useLocation } from "react-router";
+import { RestrictedClient } from "../clients/RestrictedClient";
+import { useEnv } from "../hooks/useEnv";
+import { useRegistry } from "../hooks/useRegistry";
 import { Route } from "../Route";
+import { Button } from "./Button";
 import { LogoIcon } from "./LogoIcon";
 
 type Props = ComponentProps<"main"> & {
@@ -28,9 +32,54 @@ namespace Internal {
   };
   function Item({ to, active, children }: ItemProps) {
     return (
-      <Link to={to} className={clsx("rounded-lg px-3 py-2", active ? "border border-c-line bg-c-card font-semibold text-c-ink" : "text-c-ink2")}>
+      <Link
+        to={to}
+        className={clsx("rounded-lg px-3 py-2", active ? "border border-c-line bg-c-card font-semibold text-c-ink" : "text-c-ink2")}
+      >
         {children}
       </Link>
+    );
+  }
+
+  /**
+   * The dev stage's sandbox: seed it with the made-up services, or empty it. The pages
+   * follow the server's change stream, so they show the result by themselves.
+   */
+  function Sandbox() {
+    const env = useEnv();
+    const restrictedClient = useRegistry(RestrictedClient);
+    const [working, setWorking] = useState<"seed" | "purge">();
+    const [problem, setProblem] = useState<string>();
+
+    if (env.stage !== "dev") {
+      return null;
+    }
+
+    async function run(action: "seed" | "purge") {
+      setWorking(action);
+      setProblem(undefined);
+      try {
+        await (action === "seed" ? restrictedClient.seed() : restrictedClient.purge());
+      } catch (e) {
+        const response = (e as { response?: { status?: number; json?: { message?: string } } }).response;
+        setProblem(response?.status === 409 ? "a job is running" : (response?.json?.message ?? "it did not work"));
+      } finally {
+        setWorking(undefined);
+      }
+    }
+
+    return (
+      <div className="mt-3 flex flex-col gap-2 rounded-lg border border-dashed border-c-line p-2.5">
+        <div className="flex gap-1.5">
+          <Button small onClick={() => void run("seed")} loading={working === "seed"} disabled={working !== undefined}>
+            Seed
+          </Button>
+          <Button small onClick={() => void run("purge")} loading={working === "purge"} disabled={working !== undefined}>
+            Purge
+          </Button>
+        </div>
+        {problem && <div className="font-semibold text-c-warn">{problem}</div>}
+      </div>
     );
   }
 
@@ -62,6 +111,7 @@ namespace Internal {
               {archives.errors.length} {archives.errors.length === 1 ? "listing" : "listings"} failed
             </div>
           )}
+          <Sandbox />
         </div>
       </nav>
     );

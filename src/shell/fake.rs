@@ -9,10 +9,11 @@ use serde_json::json;
 
 use super::{Env, OnLine, Output, Shell, Stream};
 
-/// Stands in for btrfs, btrbk, restic and bash on a machine that has none of them (the dev
-/// stage). It recognises the exact invocations the backends make and answers in their
-/// output formats, with enough variety to exercise every state the website can show.
-/// Backups it "runs" show up in later listings, so the dev loop feels like the real thing.
+/// Stands in for btrfs, btrbk, restic and bash on a machine that has none of them: all of
+/// them for the tests, btrfs and btrbk for the dev stage (see `SandboxShell`). It recognises
+/// the exact invocations the backends make and answers in their output formats, with enough
+/// variety to exercise every state the website can show. Backups it "runs" show up in later
+/// listings, so the dev loop feels like the real thing.
 #[derive(Default)]
 pub struct FakeShell {
     state: Mutex<State>,
@@ -25,7 +26,7 @@ struct State {
     initialized_repos: HashSet<String>,
 }
 
-// A made-up machine, matching dev/atlas: nothing here is named after a real deployment
+// A made-up machine, matching the services the sandbox is seeded with: nothing here is named after a real deployment
 const SERVICES: [&str; 8] = [
     "dns", "gallery", "ledger", "mailbox", "radio", "recipes", "tracker", "wiki",
 ];
@@ -36,7 +37,6 @@ const BROKEN: [&str; 1] = ["gallery"];
 /// Offsite backups stopped nine days ago
 const STALE: [&str; 1] = ["ledger"];
 const LIVE: &str = "/srv/demo/disk-a";
-const REPLICA: &str = "/srv/demo/disk-b";
 const DUMPS: &str = "/srv/demo/dumps";
 
 #[async_trait]
@@ -105,7 +105,8 @@ impl FakeShell {
         if verb != (Some("subvolume"), Some("list")) {
             return output(1, "", "btrfs: unsupported fake invocation");
         }
-        let is_replica = dir.starts_with(REPLICA);
+        // the second disk, in the tests' made-up paths and in the seeded sandbox alike
+        let is_replica = dir.contains("/disk-b/");
         let mut lines = Vec::new();
         let mut line = |service: &str, time: DateTime<Local>| {
             let id = 300 + lines.len();
@@ -232,12 +233,32 @@ impl FakeShell {
             Stream::Out,
             "Backup Summary (btrbk command line client, version 0.32.6)",
         );
+        // where the snapshot goes and where it is sent, as the generated configuration says
+        let config = tokio::fs::read_to_string(after(cmd, "-c"))
+            .await
+            .unwrap_or_default();
+        let settings = |key: &str| -> Vec<String> {
+            config
+                .lines()
+                .filter_map(|line| line.trim().strip_prefix(key))
+                .map(|value| value.trim().to_string())
+                .collect()
+        };
+        let volume = settings("volume ")
+            .pop()
+            .unwrap_or_else(|| LIVE.to_string());
+        let snapshot_dir = settings("snapshot_dir ")
+            .pop()
+            .unwrap_or_else(|| ".snapshots".to_string());
+        let targets = settings("target ");
         for subvolume in subvolumes {
             let name = format!("{subvolume}.{}", stamp(now));
             pause(400, 400).await;
-            on_line(Stream::Out, &format!("+++ {LIVE}/.snapshots/{name}"));
-            pause(600, 800).await;
-            on_line(Stream::Out, &format!(">>> {REPLICA}/.snapshots/{name}"));
+            on_line(Stream::Out, &format!("+++ {volume}/{snapshot_dir}/{name}"));
+            for target in &targets {
+                pause(600, 800).await;
+                on_line(Stream::Out, &format!(">>> {target}/{name}"));
+            }
             let service = subvolume.trim_start_matches('@').to_string();
             self.state
                 .lock()

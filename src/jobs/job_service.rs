@@ -43,6 +43,24 @@ struct State {
     /// In the order they were started
     jobs: Vec<Tracked>,
     running: Option<String>,
+    /// Someone is rearranging the sandbox (seed, purge): no job may start meanwhile
+    held: bool,
+}
+
+/// What a refused start says while the sandbox is being seeded or purged
+pub const HELD: &str = "sandbox";
+
+/// Keeps every job from starting for as long as it lives
+pub struct Hold {
+    service: Arc<JobService>,
+}
+
+impl Drop for Hold {
+    fn drop(&mut self) {
+        self.service.state.lock().unwrap().held = false;
+        // whatever became due meanwhile can go now
+        self.service.tell(&self.service.on_idle);
+    }
 }
 
 struct Tracked {
@@ -68,6 +86,11 @@ impl JobService {
             let mut state = self.state.lock().unwrap();
             if let Some(job_id) = state.running.clone() {
                 return Err(Busy { job_id });
+            }
+            if state.held {
+                return Err(Busy {
+                    job_id: HELD.to_string(),
+                });
             }
             let job = Job {
                 id: uuid::Uuid::new_v4().to_string()[..8].to_string(),
@@ -110,7 +133,31 @@ impl JobService {
     }
 
     pub fn idle(&self) -> bool {
-        self.state.lock().unwrap().running.is_none()
+        let state = self.state.lock().unwrap();
+        state.running.is_none() && !state.held
+    }
+
+    /// Keeps jobs from starting until the hold is dropped; refused while one runs
+    pub fn hold(self: &Arc<Self>) -> Result<Hold, Busy> {
+        let mut state = self.state.lock().unwrap();
+        if let Some(job_id) = state.running.clone() {
+            return Err(Busy { job_id });
+        }
+        if state.held {
+            return Err(Busy {
+                job_id: HELD.to_string(),
+            });
+        }
+        state.held = true;
+        Ok(Hold {
+            service: self.clone(),
+        })
+    }
+
+    /// Forgets every job (a purged sandbox has no history). Only while held, so none runs.
+    pub fn forget_all(&self, _hold: &Hold) {
+        self.state.lock().unwrap().jobs.clear();
+        self.tell(&self.on_changed);
     }
 
     /// Called whenever the list of jobs looks different: one started, one ended
@@ -533,5 +580,52 @@ mod tests {
         service.settled().await;
 
         assert_eq!(service.get(&job.id).unwrap().failed, vec!["wiki"]);
+    }
+
+    #[tokio::test]
+    async fn should_start_nothing_while_held_and_refuse_a_hold_while_a_job_runs() {
+        let control = Controllable::default();
+        let service = JobService::new(control.executor());
+        let freed = Arc::new(AtomicUsize::new(0));
+        service.on_idle({
+            let freed = freed.clone();
+            move || {
+                freed.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+
+        let job = service.start(request(Mode::Hot), Trigger::Manual).unwrap();
+        assert_eq!(
+            service.hold().err(),
+            Some(Busy {
+                job_id: job.id.clone()
+            })
+        );
+        control.finish();
+        service.settled().await;
+
+        let hold = service.hold().unwrap();
+        assert!(!service.idle());
+        assert_eq!(
+            service.start(request(Mode::Hot), Trigger::Manual).err(),
+            Some(Busy {
+                job_id: HELD.to_string()
+            })
+        );
+        assert_eq!(
+            service.hold().err(),
+            Some(Busy {
+                job_id: HELD.to_string()
+            })
+        );
+        service.forget_all(&hold);
+        assert_eq!(service.list(), vec![]);
+
+        let before = freed.load(Ordering::SeqCst);
+        drop(hold);
+        assert!(service.idle());
+        // released like a job that ended, so whatever waits can go
+        assert_eq!(freed.load(Ordering::SeqCst), before + 1);
+        assert!(service.start(request(Mode::Hot), Trigger::Manual).is_ok());
     }
 }

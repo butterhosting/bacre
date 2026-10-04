@@ -24,7 +24,7 @@ services:
     build:
       context: ./docker/bacre-dev
     # umask 0: what one user builds into the volumes, the next one (another HOST_UID) can build over
-    command: sh -c 'umask 0000 && exec cargo watch --quiet --watch src --watch Cargo.toml --watch build.rs --exec "run -- dev/config.yaml"'
+    command: sh -c 'umask 0000 && exec cargo watch --quiet --watch src --watch Cargo.toml --watch build.rs --exec "run -- config.dev.yaml"'
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     ports:
       - "3001:3001"

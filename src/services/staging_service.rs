@@ -12,24 +12,24 @@ use crate::models::archives::{Backend, Staged, iso};
 /// A download in progress lives next to its final place under this suffix, and never counts as staged
 pub const PARTIAL: &str = ".partial";
 
-pub fn dir(config: &Config, service: &str, handle: &str) -> PathBuf {
-    config
-        .backends
-        .restic
-        .staging_dir
-        .join(service)
-        .join(handle)
+/// Where a download of the service's snapshot is staged; nowhere on a daemon without restic
+pub fn dir(config: &Config, service: &str, handle: &str) -> Result<PathBuf, String> {
+    Ok(config.restic()?.staging_dir.join(service).join(handle))
 }
 
 pub async fn list(config: &Config) -> Vec<Staged> {
-    let root = &config.backends.restic.staging_dir;
+    // without restic, nothing is ever staged
+    let Ok(restic) = config.restic() else {
+        return Vec::new();
+    };
+    let root = &restic.staging_dir;
     let mut staged = Vec::new();
     for service in names(root).await {
         for handle in names(&root.join(&service)).await {
             if handle.ends_with(PARTIAL) {
                 continue;
             }
-            let path = dir(config, &service, &handle);
+            let path = root.join(&service).join(&handle);
             let Ok(metadata) = tokio::fs::metadata(&path).await else {
                 continue;
             };
@@ -55,7 +55,11 @@ pub async fn list(config: &Config) -> Vec<Staged> {
 }
 
 pub async fn discard(config: &Config, service: &str, handle: &str) -> std::io::Result<()> {
-    match tokio::fs::remove_dir_all(dir(config, service, handle)).await {
+    // without restic, nothing was ever staged
+    let Ok(path) = dir(config, service, handle) else {
+        return Ok(());
+    };
+    match tokio::fs::remove_dir_all(path).await {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
         _ => Ok(()),
     }
@@ -80,7 +84,7 @@ mod tests {
     async fn should_list_what_is_on_disk_and_forget_what_is_discarded() {
         let root = tempfile::tempdir().unwrap();
         let mut config = testing::config("");
-        config.backends.restic.staging_dir = root.path().to_path_buf();
+        config.backends.restic.as_mut().unwrap().staging_dir = root.path().to_path_buf();
         std::fs::create_dir_all(root.path().join("wiki/573591ae")).unwrap();
         std::fs::create_dir_all(root.path().join("wiki/aaaa1111.partial")).unwrap();
         std::fs::write(root.path().join("wiki/stray-file"), "x").unwrap();

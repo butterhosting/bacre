@@ -13,7 +13,8 @@ use serde::Deserialize;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
-    /// `dev` swaps the shell for a fake that answers btrfs, btrbk, restic and bash from generated data
+    /// `dev` answers btrfs and btrbk with a fake (a container has no btrfs) and runs everything else
+    /// for real against the sandbox
     pub stage: Stage,
     pub server: Server,
     /// Globs or paths of the `bacre.yaml` files, one per service (braces allowed)
@@ -28,6 +29,9 @@ pub struct Config {
     pub webhook: Option<Webhook>,
     /// What a backend needs from the machine, whatever the service
     pub backends: Backends,
+    /// Outside production only: a directory Bacre may fill with made-up services (seed) and
+    /// empty again (purge). Nothing outside it is ever written or deleted by either.
+    pub sandbox: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
@@ -67,9 +71,12 @@ pub struct Webhook {
     pub secret: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+/// A backend without a block here is not set up on this daemon, and a bacre.yaml that asks for
+/// it is refused. btrfs needs nothing beyond its tools.
+#[derive(Debug, Clone, PartialEq, Deserialize, Default)]
 pub struct Backends {
-    pub restic: ResticBackend,
+    #[serde(default)]
+    pub restic: Option<ResticBackend>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -95,7 +102,9 @@ struct Raw {
     #[serde(default)]
     envsets: BTreeMap<String, BTreeMap<String, String>>,
     webhook: Option<Webhook>,
+    #[serde(default)]
     backends: Backends,
+    sandbox: Option<PathBuf>,
 }
 
 impl Config {
@@ -146,10 +155,20 @@ impl Config {
                 return Err("webhook.secret: must not be empty".to_string());
             }
         }
-        if raw.backends.restic.cache_dir.as_os_str().is_empty()
-            || raw.backends.restic.staging_dir.as_os_str().is_empty()
+        if let Some(restic) = &raw.backends.restic
+            && (restic.cache_dir.as_os_str().is_empty()
+                || restic.staging_dir.as_os_str().is_empty())
         {
             return Err("backends.restic: cacheDir and stagingDir must not be empty".to_string());
+        }
+        match (&raw.sandbox, raw.stage) {
+            (Some(_), Stage::Prod) => {
+                return Err("sandbox: only outside production (stage: dev)".to_string());
+            }
+            (Some(sandbox), _) if sandbox.as_os_str().is_empty() => {
+                return Err("sandbox: must not be empty".to_string());
+            }
+            _ => {}
         }
 
         Ok(Config {
@@ -161,6 +180,14 @@ impl Config {
             envsets: raw.envsets,
             webhook: raw.webhook,
             backends: raw.backends,
+            sandbox: raw.sandbox,
+        })
+    }
+
+    /// What restic needs from the machine, when this daemon has it set up
+    pub fn restic(&self) -> Result<&ResticBackend, String> {
+        self.backends.restic.as_ref().ok_or_else(|| {
+            "restic is not set up on this daemon: its config has no backends.restic".to_string()
         })
     }
 
@@ -189,10 +216,44 @@ impl Config {
             .map(|pattern| anchor(Path::new(pattern)).to_string_lossy().into_owned())
             .collect();
         config.tmp_dir = anchor(&config.tmp_dir);
-        config.backends.restic.cache_dir = anchor(&config.backends.restic.cache_dir);
-        config.backends.restic.staging_dir = anchor(&config.backends.restic.staging_dir);
+        if let Some(restic) = &mut config.backends.restic {
+            restic.cache_dir = anchor(&restic.cache_dir);
+            restic.staging_dir = anchor(&restic.staging_dir);
+        }
+        // `..` resolved, so the check below sees where the sandbox really is
+        config.sandbox = config
+            .sandbox
+            .as_deref()
+            .map(|sandbox| lexical(&anchor(sandbox)));
+
+        // a purge deletes the sandbox whole: it must be a directory of its own, never one the
+        // config (and so likely the project) lives in
+        if let Some(sandbox) = &config.sandbox
+            && (base.starts_with(sandbox) || sandbox.components().count() < 3)
+        {
+            return Err(format!(
+                "{}: sandbox: {} contains the config file or is too close to the root; give it a directory of its own",
+                path.display(),
+                sandbox.display()
+            ));
+        }
         Ok(config)
     }
+}
+
+/// The path with `.` and `..` worked out on the text alone, without asking the file system
+fn lexical(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                out.pop();
+            }
+            other => out.push(other),
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -265,10 +326,46 @@ mod tests {
             ]
         );
         assert_eq!(config.tmp_dir, base.join(".tmp"));
-        assert_eq!(config.backends.restic.cache_dir, base.join(".cache"));
-        assert_eq!(
-            config.backends.restic.staging_dir,
-            PathBuf::from("/staging")
+        let restic = config.backends.restic.as_ref().unwrap();
+        assert_eq!(restic.cache_dir, base.join(".cache"));
+        assert_eq!(restic.staging_dir, PathBuf::from("/staging"));
+    }
+
+    #[test]
+    fn should_run_without_restic_when_the_config_does_not_set_it_up() {
+        let config = Config::parse("server: { bind: 127.0.0.1, port: 3001 }").unwrap();
+        assert_eq!(config.backends.restic, None);
+        assert!(config.restic().unwrap_err().contains("backends.restic"));
+        assert!(Config::parse("server: { bind: 127.0.0.1, port: 3001 }\nbackends: { restic: { cacheDir: '', stagingDir: /s } }").is_err());
+    }
+
+    #[test]
+    fn should_only_allow_a_sandbox_outside_production() {
+        assert!(parse("sandbox: .sandbox").is_ok());
+        let prod = Config::parse(
+            "server: { bind: 0.0.0.0, port: 9100 }\nbackends: { restic: { cacheDir: /c, stagingDir: /s } }\nsandbox: /srv/sandbox",
         );
+        assert!(
+            prod.unwrap_err()
+                .starts_with("sandbox: only outside production")
+        );
+    }
+
+    #[test]
+    fn should_refuse_a_sandbox_that_a_purge_would_take_the_project_down_with() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yaml");
+        let load = |sandbox: &str| {
+            std::fs::write(&path, format!("stage: dev\nserver: {{ bind: 127.0.0.1, port: 3001 }}\nbackends: {{ restic: {{ cacheDir: .c, stagingDir: .s }} }}\nsandbox: {sandbox}\n")).unwrap();
+            Config::load(&path)
+        };
+
+        assert_eq!(
+            load(".sandbox").unwrap().sandbox,
+            Some(std::path::absolute(dir.path()).unwrap().join(".sandbox"))
+        );
+        for bad in [".", "..", "/", "/srv"] {
+            assert!(load(bad).is_err(), "{bad} should be refused");
+        }
     }
 }

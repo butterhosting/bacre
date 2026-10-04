@@ -124,6 +124,11 @@ impl Scheduler {
         self.state.lock().unwrap().stopped = true;
     }
 
+    /// Drops whatever is waiting to run: the services it was for have just been purged
+    pub fn forget_waiting(&self) {
+        self.state.lock().unwrap().waiting.clear();
+    }
+
     /// Queues whatever became due since the last check
     pub fn check(&self) {
         let now = (self.now)();

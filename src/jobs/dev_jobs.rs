@@ -1,13 +1,12 @@
-//! One job per state for the dev stage, so the jobs pages have something to show before you click.
-
-use std::sync::Arc;
+//! A succeeded and a failed job for the dev stage, so the jobs pages have something to show
+//! before you click. Made up: the jobs you start yourself run for real against the sandbox.
 
 use chrono::{Duration, Utc};
 
 use super::job_service::JobService;
 use crate::models::archives::iso;
 use crate::models::jobs::{
-    BackupRequest, BtrfsTarget, Job, Line, LineStream, Mode, Request, ResticTarget, Status, Trigger,
+    BackupRequest, BtrfsTarget, Job, Line, LineStream, Mode, Request, Status, Trigger,
 };
 
 pub fn seed(job_service: &JobService) {
@@ -66,19 +65,6 @@ pub fn seed(job_service: &JobService) {
             (Info, "==> Failed: Starting gallery failed (exit 1)"),
         ],
     }));
-}
-
-/// The "busy" one: a real job through the fake shell, long enough to watch (~15 s)
-pub fn start_one(job_service: &Arc<JobService>) {
-    let targets = ["wiki", "mailbox", "ledger"].map(|service| ResticTarget {
-        service: service.to_string(),
-    });
-    let _ = job_service.start(
-        Request::Backup(BackupRequest::Restic {
-            targets: targets.to_vec(),
-        }),
-        Trigger::Manual,
-    );
 }
 
 struct Sample {

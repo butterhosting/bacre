@@ -28,7 +28,7 @@ pub fn command<const N: usize>(
     entry: &Entry,
     args: [&str; N],
 ) -> Result<Vec<String>, String> {
-    let cache_dir = ctx.config.backends.restic.cache_dir.to_string_lossy();
+    let cache_dir = ctx.config.restic()?.cache_dir.to_string_lossy();
     let mut command = vec![
         "restic".to_string(),
         "-r".to_string(),
@@ -137,10 +137,41 @@ pub async fn list(ctx: &Context, entry: &Entry) -> Result<Listing, String> {
 
 /// What a tool said on its way out, or its exit code when it said nothing
 pub fn reason(stderr: &str, code: i32) -> String {
+    // with --json, restic 0.19 and later report the error itself as JSON
+    let reported: Vec<String> = stderr
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line.trim()).ok())
+        .filter(|value| value["message_type"] == "exit_error" || value["message_type"] == "error")
+        .filter_map(|value| value["message"].as_str().map(str::to_string))
+        .collect();
+    if !reported.is_empty() {
+        return reported.join("; ");
+    }
     let stderr = stderr.trim();
     if stderr.is_empty() {
         format!("exit {code}")
     } else {
         stderr.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reason;
+
+    #[test]
+    fn should_say_why_restic_failed_however_it_said_it() {
+        assert_eq!(
+            reason("Fatal: wrong password or no key found\n", 12),
+            "Fatal: wrong password or no key found"
+        );
+        assert_eq!(
+            reason(
+                "{\"message_type\":\"exit_error\",\"code\":12,\"message\":\"Fatal: wrong password or no key found\"}\n",
+                12
+            ),
+            "Fatal: wrong password or no key found"
+        );
+        assert_eq!(reason("  \n", 3), "exit 3");
     }
 }

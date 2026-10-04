@@ -26,9 +26,10 @@ use crate::jobs::job_service::JobService;
 use crate::services::archive_service::ArchiveService;
 use crate::services::atlas_service::AtlasService;
 use crate::services::change_service::ChangeService;
+use crate::services::sandbox_service::SandboxService;
 use crate::services::scheduler::Scheduler;
 use crate::services::webhook_service::WebhookService;
-use crate::shell::{FakeShell, RealShell, Shell};
+use crate::shell::{RealShell, SandboxShell, Shell};
 
 #[tokio::main]
 async fn main() -> ExitCode {
@@ -56,7 +57,7 @@ async fn main() -> ExitCode {
 async fn run(config_path: &Path) -> Result<(), String> {
     let config = Arc::new(Config::load(config_path)?);
     let shell: Arc<dyn Shell> = match config.stage {
-        Stage::Dev => Arc::new(FakeShell::default()),
+        Stage::Dev => Arc::new(SandboxShell::default()),
         Stage::Prod => Arc::new(RealShell),
     };
 
@@ -66,13 +67,19 @@ async fn run(config_path: &Path) -> Result<(), String> {
         shell,
     };
     let archive_service = ArchiveService::new(
-        ctx,
+        ctx.clone(),
         AtlasService::new(config.clone()),
         change_service.clone(),
     );
     let job_service = JobService::new(JobExecutor::new(archive_service.clone()).executor());
     let scheduler = Scheduler::new(archive_service.clone(), Box::new(job_service.clone()));
     let webhook_service = Arc::new(WebhookService::new(config.clone()));
+    let sandbox_service = SandboxService::new(
+        ctx,
+        job_service.clone(),
+        scheduler.clone(),
+        archive_service.clone(),
+    );
 
     job_service.on_changed({
         let change_service = change_service.clone();
@@ -113,6 +120,7 @@ async fn run(config_path: &Path) -> Result<(), String> {
         job_service: job_service.clone(),
         scheduler: scheduler.clone(),
         change_service,
+        sandbox: sandbox_service.clone(),
     });
 
     // The page says "loading" while the first listing runs; the scheduler waits for it, to see what was missed
@@ -120,10 +128,12 @@ async fn run(config_path: &Path) -> Result<(), String> {
         let (config, job_service, scheduler) =
             (config.clone(), job_service.clone(), scheduler.clone());
         async move {
+            if let Some(sandbox) = &sandbox_service {
+                sandbox.seed_if_empty().await;
+            }
             archive_service.start().await;
             if config.stage == Stage::Dev {
                 dev_jobs::seed(&job_service);
-                dev_jobs::start_one(&job_service);
             }
             scheduler.start();
         }

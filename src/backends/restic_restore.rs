@@ -13,7 +13,7 @@ use crate::services::staging_service::{self, PARTIAL};
 
 pub async fn download(ctx: &Context, entry: &Entry, handle: &str, log: &Log) -> Outcome {
     let service = &entry.config.service;
-    let staged = staging_service::dir(&ctx.config, service, handle);
+    let staged = staging_service::dir(&ctx.config, service, handle)?;
     if is_directory(&staged).await {
         return Err(Failure::new(format!(
             "{handle} is already staged at {}; restore it or discard it first",
@@ -63,7 +63,7 @@ pub async fn restore(ctx: &Context, entry: &Entry, handle: &str, log: &Log) -> O
             "{service} has no restic.lifecycle.restoreApply hook in its bacre.yaml, so Bacre does not know how to put a download back"
         )));
     };
-    let staged = staging_service::dir(&ctx.config, service, handle);
+    let staged = staging_service::dir(&ctx.config, service, handle)?;
     if !is_directory(&staged).await {
         return Err(Failure::new(format!(
             "{handle} is not staged (expected {}); download it first",

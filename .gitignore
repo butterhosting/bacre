@@ -3,6 +3,4 @@
 .direnv
 
 # what the dev stage writes
-/dev/.tmp
-/dev/.cache
-/dev/.staging
+/.sandbox

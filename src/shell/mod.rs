@@ -1,8 +1,10 @@
 //! The one I/O boundary of the daemon: every backend talks to its tool through this.
-//! The real one spawns processes; the fake one answers from generated data (dev stage).
+//! The real one spawns processes; the fake one answers from generated data; the sandbox one
+//! (dev stage) is real except for btrfs.
 
 mod fake;
 mod real;
+mod sandbox;
 
 use std::collections::BTreeMap;
 
@@ -10,6 +12,7 @@ use async_trait::async_trait;
 
 pub use fake::FakeShell;
 pub use real::RealShell;
+pub use sandbox::SandboxShell;
 
 pub type Env = BTreeMap<String, String>;
 

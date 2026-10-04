@@ -32,15 +32,17 @@ jobs:
       - name: "Application :: Inspect Binaries"
         run: file dist/*
 
-      # The runner is an amd64 Linux machine, so that binary can be run right here, in the dev stage
+      # The runner is an amd64 Linux machine, so that binary can be run right here: as in
+      # production, with nothing to back up (the dev stage needs restic, which the runner lacks)
       - name: "Application :: Smoke Test"
         run: |
           ./dist/bacre-linux-amd64 --version
-          ./dist/bacre-linux-amd64 dev/config.yaml &
+          echo 'server: { bind: 127.0.0.1, port: 3001 }' > smoke.yaml
+          ./dist/bacre-linux-amd64 smoke.yaml &
           sleep 3
           curl --fail --silent --show-error http://127.0.0.1:3001/health
-          curl --fail --silent --show-error --user kim:possible http://127.0.0.1:3001/api/env
-          curl --fail --silent --show-error --user kim:possible http://127.0.0.1:3001/api/archives | grep --quiet '"services"'
+          curl --fail --silent --show-error http://127.0.0.1:3001/api/env | grep --quiet '"stage":"prod"'
+          curl --fail --silent --show-error http://127.0.0.1:3001/api/archives | grep --quiet '"services"'
           curl --fail --silent --show-error http://127.0.0.1:3001/ | grep "<title>Bacre</title>"
 
       - name: "Application :: Binaries"

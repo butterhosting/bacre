@@ -56,6 +56,13 @@ impl AtlasService {
                     continue;
                 }
             };
+            if config.restic.is_some() && self.config.backends.restic.is_none() {
+                scan.problems.push(problem(
+                    "restic: this daemon has no restic set up (backends.restic in its config)"
+                        .to_string(),
+                ));
+                continue;
+            }
             if let Some(restic) = &config.restic
                 && !self.config.envsets.contains_key(&restic.envset)
             {
@@ -348,6 +355,30 @@ mod tests {
             scan.problems[0]
                 .message
                 .contains("\"known\" is not defined")
+        );
+    }
+
+    #[tokio::test]
+    async fn should_refuse_restic_on_a_daemon_without_restic_but_keep_btrfs_only_services() {
+        let fixture = Fixture::new();
+        fixture.write("a/bacre.yaml", &valid("local"));
+        fixture.write(
+            "b/bacre.yaml",
+            "service: offsite\nhome: /opt/o\nrestic:\n  repository: s3:x/o\n  envset: e\n  retention: { keepLast: 1, keepDaily: 1, keepWeekly: 1, keepMonthly: 1 }\n  backupPaths: [/opt/o]\n",
+        );
+        let mut config = testing::config(&format!(
+            "services: ['{}/*/bacre.yaml']\nenvsets: {{ e: {{}} }}",
+            fixture.root()
+        ));
+        config.backends.restic = None;
+
+        let scan = AtlasService::new(Arc::new(config)).scan().await;
+
+        assert_eq!(services(&scan), vec!["local"]);
+        assert!(
+            scan.problems[0]
+                .message
+                .starts_with("restic: this daemon has no restic set up")
         );
     }
 

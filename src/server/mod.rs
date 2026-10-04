@@ -14,7 +14,7 @@ use axum::extract::{Path, State};
 use axum::http::{StatusCode, header};
 use axum::response::sse::{Event as SseEvent, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router, middleware};
 use futures_util::stream::{self, Stream, StreamExt};
 use serde::Serialize;
@@ -29,6 +29,7 @@ use crate::models::atlas::is_service_name;
 use crate::models::jobs::{Event, Request, Trigger, is_handle};
 use crate::services::archive_service::ArchiveService;
 use crate::services::change_service::ChangeService;
+use crate::services::sandbox_service::{Refusal, SandboxService};
 use crate::services::scheduler::Scheduler;
 use crate::services::staging_service;
 
@@ -39,6 +40,8 @@ pub struct App {
     pub job_service: Arc<JobService>,
     pub scheduler: Arc<Scheduler>,
     pub change_service: Arc<ChangeService>,
+    /// Only in the dev stage, with a sandbox configured
+    pub sandbox: Option<Arc<SandboxService>>,
 }
 
 const FAVICON: &[u8] = include_bytes!("../../website/src/images/favicon.svg");
@@ -53,6 +56,8 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/jobs", get(jobs).post(start_job))
         .route("/jobs/{id}", get(job))
         .route("/jobs/{id}/events", get(job_events))
+        .route("/restricted/seed", post(seed))
+        .route("/restricted/purge", post(purge))
         // an unknown API path is an error of its own, not a page of the website
         .fallback(route_not_found)
         .layer(middleware::from_fn_with_state(users, auth::guard))
@@ -180,6 +185,41 @@ async fn job(State(app): State<Arc<App>>, Path(id): Path<String>) -> Response {
     }
 }
 
+/// Restricted (never in production): fills the sandbox with made-up services
+async fn seed(State(app): State<Arc<App>>) -> Response {
+    match &app.sandbox {
+        Some(sandbox) => restricted(sandbox.seed().await),
+        None => route_not_found().await,
+    }
+}
+
+/// Restricted (never in production): empties the sandbox
+async fn purge(State(app): State<Arc<App>>) -> Response {
+    match &app.sandbox {
+        Some(sandbox) => restricted(sandbox.purge().await),
+        None => route_not_found().await,
+    }
+}
+
+fn restricted(result: Result<(), Refusal>) -> Response {
+    match result {
+        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Err(Refusal::Busy(busy)) => (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": "busy", "jobId": busy.job_id })),
+        )
+            .into_response(),
+        Err(Refusal::Failed(message)) => {
+            eprintln!("==> {message}");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": "sandbox_failed", "message": message })),
+            )
+                .into_response()
+        }
+    }
+}
+
 /// Server-sent events: the job's lines so far, then live, then `done`
 async fn job_events(State(app): State<Arc<App>>, Path(id): Path<String>) -> Response {
     let Some(receiver) = app.job_service.subscribe(&id) else {
@@ -236,6 +276,7 @@ pub mod testing {
             job_service,
             scheduler,
             change_service,
+            sandbox: None,
         })
     }
 }
