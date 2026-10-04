@@ -577,7 +577,7 @@ mod tests {
             let yaml = bacre_yaml(&world, spec);
             let document = serde_yaml_ng::from_str(&yaml)
                 .unwrap_or_else(|e| panic!("{}: {e}\n{yaml}", spec.name));
-            let config = atlas::parse(&document)
+            let config = atlas::parse(&document, &world.paths(spec.name).home)
                 .unwrap_or_else(|issues| panic!("{}: {issues:?}\n{yaml}", spec.name));
 
             assert_eq!(config.service, spec.name);

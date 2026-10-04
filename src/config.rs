@@ -219,7 +219,7 @@ impl Config {
     }
 }
 
-fn lexical(path: &Path) -> PathBuf {
+pub fn lexical(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for component in path.components() {
         match component {

@@ -44,7 +44,8 @@ impl AtlasService {
                     continue;
                 }
             };
-            let config = match atlas::parse(&document) {
+            let dir = Path::new(&path).parent().unwrap_or(Path::new("/"));
+            let config = match atlas::parse(&document, dir) {
                 Ok(config) => config,
                 Err(issues) => {
                     scan.problems
@@ -268,6 +269,37 @@ mod tests {
 
         assert_eq!(scan.problems, vec![]);
         assert_eq!(services(&scan), vec!["solo"]);
+    }
+
+    #[tokio::test]
+    async fn should_read_a_relative_home_from_the_folder_of_the_bacre_yaml() {
+        let fixture = Fixture::new();
+        for (service, home) in [("dot", "."), ("down", "./data/"), ("up", "../shared/./x")] {
+            fixture.write(
+                &format!("services/{service}/bacre.yaml"),
+                &valid(service).replace(&format!("home: /opt/{service}"), &format!("home: {home}")),
+            );
+        }
+
+        let scan = atlas(&[format!("{}/services/*/bacre.yaml", fixture.root())], "{}")
+            .scan()
+            .await;
+
+        assert_eq!(scan.problems, vec![]);
+        let homes: Vec<&str> = scan
+            .entries
+            .iter()
+            .map(|entry| entry.config.home.as_str())
+            .collect();
+        let root = fixture.root();
+        assert_eq!(
+            homes,
+            vec![
+                format!("{root}/services/dot"),
+                format!("{root}/services/down/data"),
+                format!("{root}/services/shared/x"),
+            ]
+        );
     }
 
     #[tokio::test]

@@ -281,6 +281,7 @@ fn request(backend: Backend, mut services: Vec<String>) -> Request {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
     use std::sync::atomic::{AtomicBool, Ordering};
 
     use super::*;
@@ -358,7 +359,8 @@ mod tests {
                 );
                 Entry {
                     path: format!("/atlas/{service}.yaml"),
-                    config: atlas::parse(&serde_yaml_ng::from_str(&yaml).unwrap()).unwrap(),
+                    config: atlas::parse(&serde_yaml_ng::from_str(&yaml).unwrap(), Path::new("/atlas"))
+                        .unwrap(),
                 }
             })
             .collect();

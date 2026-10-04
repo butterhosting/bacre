@@ -1,7 +1,10 @@
 //! A file is read in one pass that collects every problem it has, rather than stopping at the first.
 
+use std::path::{Component, Path};
+
 use serde_yaml_ng::{Mapping, Value};
 
+use crate::config::lexical;
 use crate::cron::Cron;
 use crate::models::archives::Backend;
 use crate::retention::Retention;
@@ -76,7 +79,8 @@ pub struct Problem {
     pub message: String,
 }
 
-pub fn parse(document: &Value) -> Result<ServiceConfig, Vec<String>> {
+/// `dir` is the folder holding the bacre.yaml, which a relative `home` (`.`, `./data`) starts from
+pub fn parse(document: &Value, dir: &Path) -> Result<ServiceConfig, Vec<String>> {
     let mut reader = Reader::default();
     let Some(root) = document.as_mapping() else {
         return Err(vec!["(root): expected a mapping".to_string()]);
@@ -89,7 +93,7 @@ pub fn parse(document: &Value) -> Result<ServiceConfig, Vec<String>> {
         }
         valid
     });
-    let home = reader.absolute(root, "home");
+    let home = reader.home(root, dir);
     let btrfs = reader.block(root, "btrfs", btrfs);
     let restic = reader.block(root, "restic", restic);
 
@@ -260,13 +264,21 @@ impl Reader {
         !text.is_empty()
     }
 
-    fn absolute(&mut self, map: &Mapping, key: &str) -> Option<String> {
-        self.string(map, key).filter(|path| {
-            if !path.starts_with('/') {
-                self.issue(key, "must be an absolute path");
-            }
-            path.starts_with('/')
-        })
+    /// Absolute, or relative to `dir` when it starts with `.` or `..`
+    fn home(&mut self, map: &Mapping, dir: &Path) -> Option<String> {
+        let path = self.string(map, "home")?;
+        let relative = Path::new(&path)
+            .components()
+            .next()
+            .is_some_and(|first| matches!(first, Component::CurDir | Component::ParentDir));
+        if relative {
+            Some(lexical(&dir.join(&path)).to_string_lossy().into_owned())
+        } else if path.starts_with('/') {
+            Some(path)
+        } else {
+            self.issue("home", "must be an absolute path, or start with ./ or ../");
+            None
+        }
     }
 
     fn strings(&mut self, map: &Mapping, key: &str, at_least: usize) -> Option<Vec<String>> {
