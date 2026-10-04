@@ -32,6 +32,7 @@ export namespace RestoreFlow {
   export async function discard(page: Page, service: string): Promise<void> {
     await page.goto(`services/${service}`);
     await page.getByTestId("staged").getByRole("button", { name: "Discard", exact: true }).click();
+    await page.getByRole("dialog", { name: `Discard ${service}` }).getByRole("button", { name: "Discard", exact: true }).click();
     await expect(page.getByTestId("staged")).not.toBeVisible();
   }
 }

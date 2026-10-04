@@ -3,13 +3,13 @@ import type { Jobs } from "@/models/Jobs";
 import clsx from "clsx";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
-import { ArchiveClient } from "../clients/ArchiveClient";
 import { JobClient } from "../clients/JobClient";
 import { BackendInfo } from "../comps/BackendInfo";
 import { BackupDialog } from "../comps/BackupDialog";
 import { Button } from "../comps/Button";
 import { Card } from "../comps/Card";
 import { Chip } from "../comps/Chip";
+import { DiscardDialog } from "../comps/DiscardDialog";
 import { Frame } from "../comps/Frame";
 import { RestoreDialog } from "../comps/RestoreDialog";
 import { Backends } from "../helpers/Backends";
@@ -131,18 +131,7 @@ namespace Internal {
     onStagingChanged: () => Promise<void>;
   };
   function StagedBlock({ staged, snapshot, onRestore, onStagingChanged }: StagedBlockProps) {
-    const archiveClient = useRegistry(ArchiveClient);
     const [discarding, setDiscarding] = useState(false);
-
-    async function discard() {
-      setDiscarding(true);
-      try {
-        await archiveClient.discard(staged);
-        await onStagingChanged();
-      } finally {
-        setDiscarding(false);
-      }
-    }
 
     return (
       <div data-testid="staged" className="flex flex-col gap-1.5 border-b border-[#ecc9a3] bg-[#fdf6ea] px-4 pt-2.5 pb-3">
@@ -151,7 +140,7 @@ namespace Internal {
           <code className="font-mono">{staged.handle}</code>
           <span className="text-c-muted">· downloaded {Prettify.ago(staged.downloadedAt)}</span>
           <span className="flex-1" />
-          <Button small onClick={() => void discard()} loading={discarding}>
+          <Button small onClick={() => setDiscarding(true)}>
             Discard
           </Button>
           <Button
@@ -165,6 +154,7 @@ namespace Internal {
           </Button>
         </div>
         <code className="font-mono text-xs break-all text-c-ink2">{staged.path}</code>
+        {discarding && <DiscardDialog staged={staged} onDiscarded={onStagingChanged} onClose={() => setDiscarding(false)} />}
       </div>
     );
   }
