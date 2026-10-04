@@ -4,7 +4,7 @@
 use std::process::Command;
 
 fn main() {
-    // The website is embedded from `website/dist`, which `just build-website` fills. The
+    // The website is embedded from `website/dist`, which `just build` fills first. The
     // folder has to exist for the server to compile at all, so a checkout that has not built
     // the website yet (every `cargo run` during development) gets an empty one.
     std::fs::create_dir_all("website/dist").expect("could not create website/dist");

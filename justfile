@@ -2,18 +2,13 @@ default:
     @just --list
 
 dev:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    # Ctrl-C ends both
-    trap 'kill 0' EXIT
-    cargo build
-    (cd website && bun install && bun run dev) &
-    cargo watch --quiet --watch src --watch Cargo.toml --watch build.rs --exec "run -- dev/config.yaml" &
-    wait
+    HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up --build
 
-build: build-website
+build:
     #!/usr/bin/env bash
     set -euo pipefail
+    bun install --cwd website --frozen-lockfile
+    bun run --cwd website build
     mkdir -p dist
     for pair in x86_64-unknown-linux-musl:amd64 aarch64-unknown-linux-musl:arm64; do
         target="${pair%%:*}"
@@ -22,14 +17,13 @@ build: build-website
     done
     ls -lh dist
 
-build-native: build-website
-    cargo build --release
-
-build-website:
-    cd website && bun install --frozen-lockfile && bun run build
-
-check:
+lint:
     cargo fmt --check
     cargo clippy --all-targets -- -D warnings
+    bun install --cwd website
+    bun run --cwd website lint
+
+test:
     cargo test
-    cd website && bun install && bun run lint
+    bun install --cwd website
+    bun run --cwd website test:unit

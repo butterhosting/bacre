@@ -21,7 +21,7 @@ pub async fn serve(uri: Uri) -> Response {
     file(INDEX).unwrap_or_else(|| {
         (
             StatusCode::NOT_FOUND,
-            "The website has not been built: run `just build-website`, or use `just dev` and open http://localhost:3000\n",
+            "The website has not been built: run `just build`, or use `just dev` and open http://localhost:3000\n",
         )
             .into_response()
     })

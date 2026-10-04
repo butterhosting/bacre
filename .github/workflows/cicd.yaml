@@ -20,8 +20,11 @@ jobs:
       - name: "Environment :: Dev Shell"
         run: nix develop --command sh -c 'cargo --version && rustc --version && bun --version && just --version'
 
-      - name: "Application :: Checks"
-        run: nix develop --command just check
+      - name: "Application :: Linting"
+        run: nix develop --command just lint
+
+      - name: "Application :: Unit Tests"
+        run: nix develop --command just test
 
       - name: "Application :: Build"
         run: nix develop --command just build

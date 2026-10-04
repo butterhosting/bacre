@@ -6,7 +6,8 @@
     "dev": "bun --hot dev.ts",
     "build": "bun run build.ts",
     "tc": "bunx tsc --noEmit",
-    "lint": "bunx tsc --noEmit -p tsconfig.lint.json && bunx knip-bun"
+    "lint": "bunx tsc --noEmit -p tsconfig.lint.json && bunx knip-bun",
+    "test:unit": "bun test"
   },
   "dependencies": {
     "bun-plugin-tailwind": "^0.1.2",
