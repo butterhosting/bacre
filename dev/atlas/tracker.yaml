@@ -1,0 +1,34 @@
+service: tracker
+home: /srv/demo/services/tracker
+
+btrfs:
+  schedule: "5 * * * *"
+  subvolume: /srv/demo/disk-a/@tracker
+  snapshots: /srv/demo/disk-a/.snapshots
+  targets:
+    - /srv/demo/disk-b/.snapshots
+  retention:
+    preserveMin: 24h
+    preserve: [72h, 30d]
+  lifecycle:
+    stop: docker compose down
+    start: docker compose up --wait
+
+restic:
+  schedule: "0 3 * * *"
+  repository: s3:s3.example.com/demo-backups/tracker
+  envset: demo-s3
+  retention:
+    keepLast: 3
+    keepDaily: 30
+    keepWeekly: 15
+    keepMonthly: 12
+  backupPaths:
+    - /srv/demo/disk-a/@tracker/data
+    - /srv/demo/dumps/tracker
+  # No restore hook: a download of this one can be inspected, but not applied
+  lifecycle:
+    backupPrepare: |
+      docker compose exec -T main sqlite3 /data/tracker.db ".backup /dumps/tracker.db"
+    backupRelease: |
+      rm -rf /srv/demo/dumps/tracker/*

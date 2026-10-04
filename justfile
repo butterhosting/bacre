@@ -6,8 +6,9 @@ dev:
     set -euo pipefail
     # Ctrl-C ends both
     trap 'kill 0' EXIT
+    cargo build
     (cd website && bun install && bun run dev) &
-    cargo watch --quiet --watch src --watch Cargo.toml --watch build.rs --exec run &
+    cargo watch --quiet --watch src --watch Cargo.toml --watch build.rs --exec "run -- dev/config.yaml" &
     wait
 
 build: build-website
@@ -31,4 +32,4 @@ check:
     cargo fmt --check
     cargo clippy --all-targets -- -D warnings
     cargo test
-    cd website && bun install && bun run tc
+    cd website && bun install && bun run lint

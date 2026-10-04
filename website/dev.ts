@@ -22,6 +22,8 @@ const server = Bun.serve({
         return Response.json({ error: "backend_unreachable", backend: BACKEND }, { status: 502 });
       }
     },
+    // the stable path the Rust server serves it at too
+    "/favicon.svg": Bun.file("./src/images/favicon.svg"),
     "/*": index,
   },
 });

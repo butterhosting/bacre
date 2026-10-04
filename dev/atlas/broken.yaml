@@ -1,0 +1,4 @@
+# Dev fixture: an invalid file, to see how the atlas reports it
+service: broken
+btrfs:
+  subvolume: not-a-subvolume

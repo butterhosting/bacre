@@ -1,0 +1,15 @@
+service: recipes
+home: /srv/demo/services/recipes
+
+btrfs:
+  schedule: "5 * * * *"
+  subvolume: /srv/demo/disk-a/@recipes
+  snapshots: /srv/demo/disk-a/.snapshots
+  targets:
+    - /srv/demo/disk-b/.snapshots
+  retention:
+    preserveMin: 24h
+    preserve: [72h, 30d]
+  lifecycle:
+    stop: docker compose down
+    start: docker compose up --wait
