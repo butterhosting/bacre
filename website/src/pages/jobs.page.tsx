@@ -4,14 +4,12 @@ import { Card } from "../comps/Card";
 import { Frame } from "../comps/Frame";
 import { StatusPill } from "../comps/StatusPill";
 import { Prettify } from "../helpers/Prettify";
-import { useArchives } from "../hooks/useArchives";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useJobs } from "../hooks/useJobs";
 import { Route } from "../Route";
 
 export function jobsPage() {
   useDocumentTitle("Jobs · Bacre");
-  const { archives } = useArchives();
   const jobs = useJobs();
 
   // the elapsed time of a running job ticks; the list itself arrives by push
@@ -26,7 +24,7 @@ export function jobsPage() {
   }, [running]);
 
   return (
-    <Frame archives={archives}>
+    <Frame>
       <div>
         <h1 className="font-display text-3xl font-semibold">Jobs</h1>
       </div>

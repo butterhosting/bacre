@@ -5,14 +5,12 @@ import { Chip } from "../comps/Chip";
 import { Frame } from "../comps/Frame";
 import { StatusPill } from "../comps/StatusPill";
 import { Prettify } from "../helpers/Prettify";
-import { useArchives } from "../hooks/useArchives";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useJob } from "../hooks/useJob";
 import { Route } from "../Route";
 
 export function jobPage() {
   const { id = "" } = useParams();
-  const { archives } = useArchives();
   const { job, missing } = useJob(id);
   useDocumentTitle(job ? `${job.title} · Bacre` : "Job · Bacre");
 
@@ -33,7 +31,7 @@ export function jobPage() {
   }, [job?.status]);
 
   return (
-    <Frame archives={archives}>
+    <Frame>
       <div className="flex flex-col gap-1.5">
         <Link to={Route.jobs()} className="text-xs text-c-muted hover:text-c-ink">
           ← Jobs

@@ -24,6 +24,7 @@ lint:
     bun run --cwd website lint
 
 test:
-    cargo test
+    # in a zone with daylight saving, so the tests of the clock changes run everywhere
+    TZ=Europe/Amsterdam cargo test
     bun install --cwd website
     bun run --cwd website test:unit

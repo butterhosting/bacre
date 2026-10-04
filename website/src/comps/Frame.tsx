@@ -1,4 +1,3 @@
-import type { Archives } from "@/models/Archives";
 import clsx from "clsx";
 import { useState, type ComponentProps, type ReactNode } from "react";
 import { Link, useLocation } from "react-router";
@@ -9,15 +8,11 @@ import { Route } from "../Route";
 import { Button } from "./Button";
 import { LogoIcon } from "./LogoIcon";
 
-type Props = ComponentProps<"main"> & {
-  /** The page's own listing, so the sidebar shows the same freshness the page does. */
-  archives: Archives.Type | undefined;
-};
 /** Sidebar plus content column; every page sits inside one. */
-export function Frame({ archives, className, ...props }: Props) {
+export function Frame({ className, ...props }: ComponentProps<"main">) {
   return (
     <>
-      <Internal.Nav archives={archives} />
+      <Internal.Nav />
       <main {...props} className={clsx("flex min-w-0 flex-1 flex-col gap-5 px-4 py-5 md:px-9 md:py-7", className)} />
     </>
   );
@@ -69,7 +64,7 @@ namespace Internal {
     }
 
     return (
-      <div className="mt-3 flex flex-col gap-2 rounded-lg border border-dashed border-c-line p-2.5">
+      <div className="mt-3 flex flex-col gap-2 border-t border-c-line pt-3">
         <div className="flex gap-1.5">
           <Button small onClick={() => void run("seed")} loading={working === "seed"} disabled={working !== undefined}>
             Seed
@@ -83,8 +78,7 @@ namespace Internal {
     );
   }
 
-  type NavProps = Pick<Props, "archives">;
-  export function Nav({ archives }: NavProps) {
+  export function Nav() {
     const { pathname } = useLocation();
     const onJobs = pathname === Route.jobs() || pathname.startsWith(`${Route.jobs()}/`);
     return (
@@ -106,11 +100,6 @@ namespace Internal {
         </div>
         <div className="mt-auto flex flex-col gap-1.5 text-xs text-c-muted max-md:hidden">
           <div className="font-mono text-c-ink">{window.location.hostname}</div>
-          {archives && archives.errors.length > 0 && (
-            <div className="font-semibold text-c-warn">
-              {archives.errors.length} {archives.errors.length === 1 ? "listing" : "listings"} failed
-            </div>
-          )}
           <Sandbox />
         </div>
       </nav>

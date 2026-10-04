@@ -451,7 +451,7 @@ restic:
             "home: ",
             "btrfs.snapshots: must be on the subvolume's filesystem",
             "btrfs.retention.preserve: ",
-            "btrfs.schedule: a cron expression has five fields",
+            "btrfs.schedule: \"daily\" is not a cron expression",
             "restic.retention.keepLast: ",
             "restic.backupPaths.0: ",
             "restic.lifecycle.restoreApply: ",

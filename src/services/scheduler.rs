@@ -11,10 +11,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use chrono::{DateTime, Local, NaiveDateTime, Utc};
+use chrono::{DateTime, Local, Utc};
 
 use super::archive_service::ArchiveService;
-use crate::cron::{self, Cron};
+use crate::cron::Cron;
 use crate::jobs::job_service::JobService;
 use crate::models::archives::{Backend, BackendState, Schedule, Service, iso};
 use crate::models::atlas::Entry;
@@ -60,14 +60,14 @@ impl Runner for Arc<JobService> {
 pub struct Scheduler {
     atlas: Arc<dyn Atlas>,
     runner: Box<dyn Runner>,
-    /// The time on the clock here: schedules are written in local time
-    now: Box<dyn Fn() -> NaiveDateTime + Send + Sync>,
+    /// Now, in the zone the schedules are written in: the machine's own
+    now: Box<dyn Fn() -> DateTime<Local> + Send + Sync>,
     state: Mutex<State>,
 }
 
 struct State {
     waiting: BTreeMap<Backend, BTreeSet<String>>,
-    last_checked: NaiveDateTime,
+    last_checked: DateTime<Local>,
     stopped: bool,
 }
 
@@ -79,13 +79,13 @@ struct Scheduled {
 
 impl Scheduler {
     pub fn new(atlas: Arc<dyn Atlas>, runner: Box<dyn Runner>) -> Arc<Self> {
-        Self::with_clock(atlas, runner, Box::new(|| Local::now().naive_local()))
+        Self::with_clock(atlas, runner, Box::new(Local::now))
     }
 
     pub fn with_clock(
         atlas: Arc<dyn Atlas>,
         runner: Box<dyn Runner>,
-        now: Box<dyn Fn() -> NaiveDateTime + Send + Sync>,
+        now: Box<dyn Fn() -> DateTime<Local> + Send + Sync>,
     ) -> Arc<Self> {
         let last_checked = now();
         Arc::new(Self {
@@ -136,7 +136,7 @@ impl Scheduler {
         for scheduled in self.scheduled() {
             if let Some(due) = scheduled
                 .cron
-                .previous(now)
+                .previous(&now)
                 .filter(|due| *due > last_checked)
             {
                 self.enqueue(&scheduled, &format!("is due ({})", due.format("%H:%M")));
@@ -154,8 +154,8 @@ impl Scheduler {
             .map(|scheduled| Schedule {
                 next: scheduled
                     .cron
-                    .next(now)
-                    .map(|next| iso(cron::local(next).with_timezone(&Utc))),
+                    .next(&now)
+                    .map(|next| iso(next.with_timezone(&Utc))),
                 waiting: state
                     .waiting
                     .get(&scheduled.backend)
@@ -224,11 +224,7 @@ impl Scheduler {
             let Ok(newest) = DateTime::parse_from_rfc3339(&newest.time) else {
                 continue;
             };
-            if let Some(due) = scheduled
-                .cron
-                .previous(now)
-                .filter(|due| newest < cron::local(*due))
-            {
+            if let Some(due) = scheduled.cron.previous(&now).filter(|due| newest < *due) {
                 self.enqueue(
                     &scheduled,
                     &format!("missed its run of {}", due.format("%H:%M")),
@@ -310,6 +306,9 @@ mod tests {
     use crate::models::archives::{
         BackendInfo, BackendStatus, HooksInfo, ResticRetentionInfo, Snapshot, SnapshotDetails,
     };
+    use chrono::NaiveDateTime;
+
+    use crate::cron;
     use crate::models::atlas;
 
     #[derive(Default, Clone)]
@@ -325,7 +324,7 @@ mod tests {
         services: Vec<Service>,
         idle: AtomicBool,
         started: Mutex<Vec<Request>>,
-        now: Mutex<NaiveDateTime>,
+        now: Mutex<DateTime<Local>>,
     }
 
     impl Atlas for Fakes {
@@ -360,8 +359,9 @@ mod tests {
         scheduler: Arc<Scheduler>,
     }
 
-    fn at(text: &str) -> NaiveDateTime {
-        NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M:%S").unwrap()
+    /// A time on the clock here
+    fn at(text: &str) -> DateTime<Local> {
+        cron::local(NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M:%S").unwrap())
     }
 
     fn world(start: &str, plans: &[(&str, Plan)]) -> World {
@@ -424,7 +424,7 @@ mod tests {
                         .map(|time| Snapshot {
                             backend: Backend::Restic,
                             service: service.to_string(),
-                            time: iso(cron::local(at(time)).with_timezone(&Utc)),
+                            time: iso(at(time).with_timezone(&Utc)),
                             handle: "abc".to_string(),
                             details: SnapshotDetails::Restic {
                                 tags: vec![],
@@ -630,7 +630,7 @@ mod tests {
             ..Plan::default()
         };
         let w = world("2026-10-03T09:30:00", &[("wiki", plan)]);
-        let next = |time: &str| Some(iso(cron::local(at(time)).with_timezone(&Utc)));
+        let next = |time: &str| Some(iso(at(time).with_timezone(&Utc)));
         assert_eq!(
             w.scheduler.list(),
             vec![

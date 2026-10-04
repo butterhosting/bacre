@@ -30,7 +30,7 @@ export function servicePage() {
   const [restore, setRestore] = useState<Internal.Restoring>();
 
   return (
-    <Frame archives={archives}>
+    <Frame>
       <div className="flex flex-wrap items-end justify-between gap-2.5">
         <div className="flex flex-col gap-1.5">
           <Link to={Route.services()} className="text-xs text-c-muted hover:text-c-ink">

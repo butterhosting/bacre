@@ -20,7 +20,7 @@ export function servicesPage() {
   const candidates = (backend: Archives.Backend) => archives?.services.filter((s) => s.backends[backend] !== undefined) ?? [];
 
   return (
-    <Frame archives={archives}>
+    <Frame>
       <div className="flex flex-wrap items-end justify-between gap-2.5">
         <div>
           <h1 className="font-display text-3xl font-semibold">{archives ? `${archives.services.length} Services` : "Services"}</h1>
