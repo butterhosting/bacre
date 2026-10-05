@@ -9,9 +9,11 @@ import { BackupDialog } from "../comps/BackupDialog";
 import { Button } from "../comps/Button";
 import { Card } from "../comps/Card";
 import { Chip } from "../comps/Chip";
+import { ClockIcon } from "../comps/ClockIcon";
 import { DiscardDialog } from "../comps/DiscardDialog";
 import { Frame } from "../comps/Frame";
 import { RestoreDialog } from "../comps/RestoreDialog";
+import { Backends } from "../helpers/Backends";
 import { Prettify } from "../helpers/Prettify";
 import { useArchives } from "../hooks/useArchives";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
@@ -30,20 +32,11 @@ export function servicePage() {
 
   return (
     <Frame>
-      <div className="flex flex-wrap items-end justify-between gap-2.5">
-        <div className="flex flex-col gap-1.5">
-          <Link to={Route.services()} className="text-xs text-c-muted hover:text-c-ink">
-            ← Services
-          </Link>
-          <h1 className="font-display text-3xl font-semibold">{name}</h1>
-        </div>
-        <div className="flex flex-wrap gap-2.5">
-          {configured.map((backend) => (
-            <Button key={backend} onClick={() => setBackup(backend)}>
-              Backup <Chip backend={backend} />
-            </Button>
-          ))}
-        </div>
+      <div className="flex flex-col gap-1.5">
+        <Link to={Route.services()} className="text-xs text-c-muted hover:text-c-ink">
+          ← Services
+        </Link>
+        <h1 className="font-display text-3xl font-semibold">{name}</h1>
       </div>
       {backup && service && <BackupDialog backend={backup} candidates={[service]} onClose={() => setBackup(undefined)} />}
       {restore && service && <RestoreDialog service={service} snapshot={restore.snapshot} staged={restore.staged} onClose={() => setRestore(undefined)} />}
@@ -59,6 +52,7 @@ export function servicePage() {
               backend={backend}
               staged={staged.filter((s) => s.backend === backend)}
               schedule={archives?.schedules.find((s) => s.service === name && s.backend === backend)}
+              onBackup={() => setBackup(backend)}
               onRestore={setRestore}
               onStagingChanged={reload}
             />
@@ -80,10 +74,11 @@ namespace Internal {
     backend: Archives.Backend;
     staged: Archives.Staged[];
     schedule: Archives.Schedule | undefined;
+    onBackup: () => void;
     onRestore: (restoring: Restoring) => void;
     onStagingChanged: () => Promise<void>;
   };
-  export function BackendCard({ service, backend, staged, schedule, onRestore, onStagingChanged }: BackendCardProps) {
+  export function BackendCard({ service, backend, staged, schedule, onBackup, onRestore, onStagingChanged }: BackendCardProps) {
     const status = service.backends[backend]!;
     const snapshots = service.snapshots.filter((s) => s.backend === backend);
     const [open, setOpen] = useState(false);
@@ -117,8 +112,55 @@ namespace Internal {
             onStagingChanged={onStagingChanged}
           />
         ))}
+        <NextRow schedule={schedule} onBackup={onBackup} />
         <Body service={service} status={status} snapshots={snapshots} staged={staged} onRestore={onRestore} />
       </Card>
+    );
+  }
+
+  type NextRowProps = {
+    /** Absent when the backend has no schedule in its bacre.yaml */
+    schedule: Archives.Schedule | undefined;
+    onBackup: () => void;
+  };
+  /** Heads the snapshot list as the one still to come, so backing up sits where restoring does */
+  function NextRow({ schedule, onBackup }: NextRowProps) {
+    return (
+      <div className="flex items-center gap-3 border-b border-dashed border-c-line bg-[#fdfaf4] px-4 py-2.5">
+        <span className="flex size-[26px] shrink-0 items-center justify-center rounded-full border border-dashed border-[#b9ab98] text-c-muted">
+          <ClockIcon dashed={!schedule} />
+        </span>
+        <div className="flex min-w-0 flex-col gap-0.5 text-xs">
+          <span className="font-semibold">Next snapshot</span>
+          <NextWhen schedule={schedule} />
+        </div>
+        <span className="flex-1" />
+        <Button small primary onClick={onBackup}>
+          Backup now
+        </Button>
+      </div>
+    );
+  }
+
+  function NextWhen({ schedule }: { schedule: Archives.Schedule | undefined }) {
+    if (!schedule) {
+      return (
+        <span className="text-c-muted italic" title="No schedule in the bacre.yaml; backups run only by hand">
+          manual only
+        </span>
+      );
+    }
+    if (schedule.waiting) {
+      return (
+        <span className="font-semibold text-c-warn" title={`Scheduled as ${schedule.cron}`}>
+          due, waiting for a job
+        </span>
+      );
+    }
+    return (
+      <span className="text-c-muted" title={`Scheduled as ${schedule.cron}`}>
+        {schedule.next ? `scheduled ${Prettify.relativeDay(schedule.next)}` : "never fires"}
+      </span>
     );
   }
 
@@ -178,6 +220,11 @@ namespace Internal {
       case "ok":
         return snapshots.map((snapshot) => (
           <Card.Row key={snapshot.handle} data-testid="snapshot">
+            <span className={clsx("flex size-[26px] shrink-0 items-center justify-center rounded-full", Backends[snapshot.backend].chip)}>
+              <svg viewBox="0 0 12 12" aria-hidden className="size-3">
+                <path d="M2.5 6.4l2.3 2.3 4.7-5.2" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
             <div className="flex min-w-0 flex-col gap-0.5">
               <code className="font-mono text-xs">{snapshot.handle}</code>
               <span className="text-xs text-c-muted">{Prettify.fullDate(snapshot.time)}</span>

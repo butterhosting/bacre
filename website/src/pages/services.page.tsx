@@ -19,6 +19,8 @@ export function servicesPage() {
   const { archives } = useArchives();
   const [dialog, setDialog] = useState<Archives.Backend>();
   const candidates = (backend: Archives.Backend) => archives?.services.filter((s) => s.backends[backend] !== undefined) ?? [];
+  // a column no service backs up to would stay empty, so it only shows while there is nothing to judge by yet
+  const columns = Archives.BACKENDS.filter((backend) => !archives?.services.length || candidates(backend).length > 0);
 
   return (
     <Frame>
@@ -45,7 +47,7 @@ export function servicesPage() {
             <thead>
               <tr className="border-b border-c-line bg-c-cardhead text-left text-xs font-medium tracking-wider text-c-muted uppercase">
                 <th className="px-4 py-2.5">Service</th>
-                {Archives.BACKENDS.map((backend) => (
+                {columns.map((backend) => (
                   <th key={backend} className="px-4 py-2.5 whitespace-nowrap">
                     Latest
                     <Chip backend={backend} className="ml-2 tracking-normal normal-case" />
@@ -59,13 +61,14 @@ export function servicesPage() {
                 <Internal.ServiceRow
                   key={service.name}
                   service={service}
+                  columns={columns}
                   staged={archives.staged.filter((s) => s.service === service.name)}
                   schedules={archives.schedules.filter((s) => s.service === service.name)}
                 />
               ))}
               {archives?.services.length === 0 && (
                 <tr>
-                  <td colSpan={Archives.BACKENDS.length + 2} className="px-4 py-3 text-c-muted">
+                  <td colSpan={columns.length + 2} className="px-4 py-3 text-c-muted">
                     {archives.refreshedAt ? "No bacre.yaml found in the atlas." : "Listing the archives…"}
                   </td>
                 </tr>
@@ -83,11 +86,12 @@ namespace Internal {
 
   type ServiceRowProps = {
     service: Archives.Service;
+    columns: Archives.Backend[];
     staged: Archives.Staged[];
     schedules: Archives.Schedule[];
   };
   /** The whole row opens the service; the name stays a real link so it is reachable by keyboard */
-  export function ServiceRow({ service, staged, schedules }: ServiceRowProps) {
+  export function ServiceRow({ service, columns, staged, schedules }: ServiceRowProps) {
     const navigate = useNavigate();
     return (
       <tr className="cursor-pointer transition-colors last:[&>td]:border-b-0 hover:bg-c-cardhead" onClick={() => void navigate(Route.service(service.name))}>
@@ -96,7 +100,7 @@ namespace Internal {
             {service.name}
           </Link>
         </td>
-        {Archives.BACKENDS.map((backend) => (
+        {columns.map((backend) => (
           <td key={backend} className={clsx(CELL, "text-sm")}>
             {service.backends[backend] && (
               <div className="flex flex-col gap-0.5">
