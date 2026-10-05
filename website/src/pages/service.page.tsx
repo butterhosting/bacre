@@ -12,7 +12,6 @@ import { Chip } from "../comps/Chip";
 import { DiscardDialog } from "../comps/DiscardDialog";
 import { Frame } from "../comps/Frame";
 import { RestoreDialog } from "../comps/RestoreDialog";
-import { Backends } from "../helpers/Backends";
 import { Prettify } from "../helpers/Prettify";
 import { useArchives } from "../hooks/useArchives";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
@@ -92,7 +91,7 @@ namespace Internal {
       <Card data-testid={`${backend}-card`}>
         <Card.Head className="flex-row items-baseline">
           <Chip backend={backend} className="self-center" />
-          <span className="font-semibold">{Backends[backend].card}</span>
+          <span className="font-semibold">Snapshots</span>
           <span className="text-xs text-c-muted">{status.state === "ok" && `(total: ${snapshots.length})`}</span>
           <span className="flex-1" />
           <button

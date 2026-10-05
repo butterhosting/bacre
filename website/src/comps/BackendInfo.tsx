@@ -1,6 +1,7 @@
 import type { Archives } from "@/models/Archives";
 import type { ReactNode } from "react";
 import { Prettify } from "../helpers/Prettify";
+import { ClockIcon } from "./ClockIcon";
 
 type Props = {
   info: Archives.BackendInfo;
@@ -94,7 +95,7 @@ namespace Internal {
           <>
             <code className="font-mono">{schedule.cron}</code>
 {" "}
-            <Tag title="The next time this schedule fires" icon={<Clock />}>
+            <Tag title="The next time this schedule fires" icon={<ClockIcon className="text-c-ink2" />}>
               {schedule.waiting ? "due, waiting for the running job" : schedule.next ? Prettify.relativeDay(schedule.next) : "never fires"}
             </Tag>
           </>
@@ -120,15 +121,6 @@ namespace Internal {
         {icon}
         {children}
       </span>
-    );
-  }
-
-  function Clock() {
-    return (
-      <svg viewBox="0 0 12 12" aria-hidden className="size-[13px] shrink-0">
-        <circle cx="6" cy="6" r="6" className="fill-c-ink2" />
-        <path d="M6 3.25V6l1.9 1.3" fill="none" className="stroke-c-card" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
     );
   }
 

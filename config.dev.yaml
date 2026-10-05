@@ -4,9 +4,9 @@ server:
   port: 3001
 services:
   - .sandbox/services/*/bacre.yaml
-users:
-  # kim:possible
-  - kim:$2y$05$O6pLpHgLgQV1PSlzzLGGNuMp205RBZyqfdHO0XGoJ4EmeTL9ZaReO
+# no users, no basic auth; uncomment to try the login (kim:possible)
+# users:
+#   - kim:$2y$05$O6pLpHgLgQV1PSlzzLGGNuMp205RBZyqfdHO0XGoJ4EmeTL9ZaReO
 envsets:
   demo:
     RESTIC_PASSWORD: demo

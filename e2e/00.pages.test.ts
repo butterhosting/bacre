@@ -44,6 +44,8 @@ test("the overview shows every service in its state", async ({ page }) => {
   await expect(row("gallery")).toContainText("listing failed");
   await expect(row("ledger")).toContainText("stale");
   await expect(row("recipes")).toContainText("no snapshots");
+  await expect(row("ledger")).toContainText("manual only");
+  await expect(row("mailbox")).toContainText("next");
   await expect(page.getByText("Fatal: wrong password or no key found")).toBeVisible();
 });
 

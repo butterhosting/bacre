@@ -7,6 +7,7 @@ import { Banner } from "../comps/Banner";
 import { Button } from "../comps/Button";
 import { Card } from "../comps/Card";
 import { Chip } from "../comps/Chip";
+import { ClockIcon } from "../comps/ClockIcon";
 import { Frame } from "../comps/Frame";
 import { Prettify } from "../helpers/Prettify";
 import { useArchives } from "../hooks/useArchives";
@@ -38,32 +39,40 @@ export function servicesPage() {
       {archives && <Banner errors={archives.errors} />}
 
       <Card>
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="border-b border-c-line bg-c-cardhead text-left text-xs font-medium tracking-wider text-c-muted uppercase">
-              <th className="px-4 py-2.5">Service</th>
-              {Archives.BACKENDS.map((backend) => (
-                <th key={backend} className="px-4 py-2.5 whitespace-nowrap">
-                  Latest
-                  <Chip backend={backend} className="ml-2 tracking-normal normal-case" />
-                </th>
-              ))}
-              <th className="px-4 py-2.5 max-md:hidden"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {archives?.services.map((service) => (
-              <Internal.ServiceRow key={service.name} service={service} staged={archives.staged.filter((s) => s.service === service.name)} />
-            ))}
-            {archives?.services.length === 0 && (
-              <tr>
-                <td colSpan={Archives.BACKENDS.length + 2} className="px-4 py-3 text-c-muted">
-                  {archives.refreshedAt ? "No bacre.yaml found in the atlas." : "Listing the archives…"}
-                </td>
+        {/* the card clips its corners, so a phone too narrow for the table scrolls it here */}
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="border-b border-c-line bg-c-cardhead text-left text-xs font-medium tracking-wider text-c-muted uppercase">
+                <th className="px-4 py-2.5">Service</th>
+                {Archives.BACKENDS.map((backend) => (
+                  <th key={backend} className="px-4 py-2.5 whitespace-nowrap">
+                    Latest
+                    <Chip backend={backend} className="ml-2 tracking-normal normal-case" />
+                  </th>
+                ))}
+                <th className="px-4 py-2.5 max-md:hidden"></th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {archives?.services.map((service) => (
+                <Internal.ServiceRow
+                  key={service.name}
+                  service={service}
+                  staged={archives.staged.filter((s) => s.service === service.name)}
+                  schedules={archives.schedules.filter((s) => s.service === service.name)}
+                />
+              ))}
+              {archives?.services.length === 0 && (
+                <tr>
+                  <td colSpan={Archives.BACKENDS.length + 2} className="px-4 py-3 text-c-muted">
+                    {archives.refreshedAt ? "No bacre.yaml found in the atlas." : "Listing the archives…"}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </Card>
     </Frame>
   );
@@ -75,9 +84,10 @@ namespace Internal {
   type ServiceRowProps = {
     service: Archives.Service;
     staged: Archives.Staged[];
+    schedules: Archives.Schedule[];
   };
   /** The whole row opens the service; the name stays a real link so it is reachable by keyboard */
-  export function ServiceRow({ service, staged }: ServiceRowProps) {
+  export function ServiceRow({ service, staged, schedules }: ServiceRowProps) {
     const navigate = useNavigate();
     return (
       <tr className="cursor-pointer transition-colors last:[&>td]:border-b-0 hover:bg-c-cardhead" onClick={() => void navigate(Route.service(service.name))}>
@@ -88,8 +98,15 @@ namespace Internal {
         </td>
         {Archives.BACKENDS.map((backend) => (
           <td key={backend} className={clsx(CELL, "text-sm")}>
-            <LatestCell service={service} backend={backend} />
-            <StagedPill count={staged.filter((s) => s.backend === backend).length} />
+            {service.backends[backend] && (
+              <div className="flex flex-col gap-0.5">
+                <div>
+                  <LatestCell service={service} backend={backend} />
+                  <StagedPill count={staged.filter((s) => s.backend === backend).length} />
+                </div>
+                <NextLine schedule={schedules.find((s) => s.backend === backend)} />
+              </div>
+            )}
           </td>
         ))}
         <td className={clsx(CELL, "text-right text-sm text-c-accent max-md:hidden")}>Open →</td>
@@ -104,6 +121,43 @@ namespace Internal {
     return (
       <span className="ml-2.5 rounded-full bg-[#f7ead3] px-[7px] py-[2px] text-xs font-semibold text-[#7a5010]" title="Downloaded and waiting in the staging directory">
         {count === 1 ? "staged" : `${count} staged`}
+      </span>
+    );
+  }
+
+  type NextLineProps = {
+    /** Absent when the backend has no schedule in its bacre.yaml */
+    schedule: Archives.Schedule | undefined;
+  };
+  function NextLine({ schedule }: NextLineProps) {
+    if (!schedule) {
+      return (
+        <span className="flex items-center gap-1.5 text-xs whitespace-nowrap text-c-muted italic" title="No schedule in the bacre.yaml; backups run only by hand">
+          <ClockIcon dashed />
+          manual only
+        </span>
+      );
+    }
+    if (schedule.waiting) {
+      return (
+        <span className="flex items-center gap-1.5 text-xs font-semibold text-c-warn" title={`Scheduled as ${schedule.cron}`}>
+          <ClockIcon />
+          due, waiting for a job
+        </span>
+      );
+    }
+    return (
+      <span className="flex items-center gap-1.5 text-xs whitespace-nowrap text-c-muted" title={`Scheduled as ${schedule.cron}`}>
+        <ClockIcon />
+        {schedule.next ? (
+          <span>
+            {/* on a phone the column is too narrow for the word, and the clock says it already */}
+            <span className="max-md:hidden">next </span>
+            {Prettify.relativeDay(schedule.next)}
+          </span>
+        ) : (
+          "never fires"
+        )}
       </span>
     );
   }
