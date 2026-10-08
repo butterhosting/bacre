@@ -20,6 +20,9 @@ pub struct ArchiveService {
     atlas_service: AtlasService,
     change_service: Arc<ChangeService>,
     state: Mutex<State>,
+    /// Held for a whole scan, so one asked for while another runs waits its turn rather than
+    /// trusting a scan that may have started before the caller's change
+    scan: tokio::sync::Mutex<()>,
 }
 
 #[derive(Default)]
@@ -50,6 +53,7 @@ impl ArchiveService {
             atlas_service,
             change_service,
             state: Mutex::default(),
+            scan: tokio::sync::Mutex::default(),
         })
     }
 
@@ -124,13 +128,8 @@ impl ArchiveService {
     }
 
     pub async fn refresh(&self) {
-        {
-            let mut state = self.state.lock().unwrap();
-            if state.refreshing {
-                return;
-            }
-            state.refreshing = true;
-        }
+        let _scan = self.scan.lock().await;
+        self.state.lock().unwrap().refreshing = true;
         self.change_service.changed();
 
         let scan = self.atlas_service.scan().await;
@@ -230,5 +229,108 @@ impl ArchiveService {
                 work(service).await;
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use async_trait::async_trait;
+    use tokio::sync::{Notify, Semaphore};
+
+    use super::*;
+    use crate::config::Config;
+    use crate::shell::{Env, OnLine, Output, Shell};
+
+    /// Every restic call waits at the gate, so a scan can be caught half way
+    struct GatedShell {
+        entered: Notify,
+        gate: Semaphore,
+    }
+
+    impl Default for GatedShell {
+        fn default() -> Self {
+            Self {
+                entered: Notify::new(),
+                gate: Semaphore::new(0),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl Shell for GatedShell {
+        async fn run(&self, _cmd: &[String], _env: &Env) -> Output {
+            self.entered.notify_one();
+            self.gate.acquire().await.unwrap().forget();
+            Output {
+                code: 1,
+                stdout: String::new(),
+                stderr: "Fatal: unable to open repository".to_string(),
+            }
+        }
+
+        async fn stream(&self, _: &[String], _: Option<&str>, _: &Env, _: OnLine<'_>) -> i32 {
+            unreachable!("a refresh only lists")
+        }
+
+        async fn pipe(&self, _: &[String], _: &[String], _: &Env, _: OnLine<'_>) -> i32 {
+            unreachable!("a refresh only lists")
+        }
+    }
+
+    fn write_service(dir: &std::path::Path, name: &str) {
+        std::fs::write(
+            dir.join(format!("{name}.yaml")),
+            format!("service: {name}\nhome: /srv/{name}\nrestic:\n  repository: /repos/{name}\n  envset: demo\n  retention: {{ keepLast: 3 }}\n  backupPaths: [/srv/{name}/data]\n"),
+        )
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn should_scan_again_when_asked_while_a_scan_from_before_a_change_runs() {
+        // given
+        let dir = tempfile::tempdir().unwrap();
+        let config = Arc::new(
+            Config::parse(&format!(
+                "server: {{ bind: 127.0.0.1, port: 3001 }}\nservices: ['{}/*.yaml']\nenvsets: {{ demo: {{}} }}\nbackends: {{ restic: {{ cacheDir: /cache, stagingDir: /staging }} }}",
+                dir.path().display()
+            ))
+            .unwrap(),
+        );
+        let shell = Arc::new(GatedShell::default());
+        let service = ArchiveService::new(
+            Context {
+                config: config.clone(),
+                shell: shell.clone(),
+            },
+            AtlasService::new(config),
+            Arc::new(ChangeService::default()),
+        );
+        write_service(dir.path(), "first");
+        let before = tokio::spawn({
+            let service = service.clone();
+            async move { service.refresh().await }
+        });
+        shell.entered.notified().await;
+
+        // when
+        write_service(dir.path(), "second");
+        let after = tokio::spawn({
+            let service = service.clone();
+            async move { service.refresh().await }
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        shell.gate.add_permits(Semaphore::MAX_PERMITS);
+        before.await.unwrap();
+        after.await.unwrap();
+
+        // then
+        let names: Vec<String> = service
+            .view()
+            .services
+            .into_iter()
+            .map(|s| s.name)
+            .collect();
+        assert_eq!(names, vec!["first", "second"]);
+        assert!(!service.view().refreshing);
     }
 }

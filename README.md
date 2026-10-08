@@ -21,9 +21,8 @@ Point Bacre at your services, and receive:
 
 ```sh
 curl -fsSL -o bacre https://github.com/butterhosting/bacre/releases/latest/download/bacre-linux-amd64
-chmod +x bacre
 echo 'server: { bind: 127.0.0.1, port: 3000 }' > config.yaml
-sudo ./bacre config.yaml
+chmod +x bacre && sudo ./bacre config.yaml
 ```
 
 ## Documentation
