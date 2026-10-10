@@ -23,19 +23,13 @@ export function servicesPage() {
   const columns = Archives.BACKENDS.filter((backend) => !archives?.services.length || candidates(backend).length > 0);
 
   return (
-    <Frame>
-      <div className="flex flex-wrap items-end justify-between gap-2.5">
-        <div>
-          <h1 className="font-display text-3xl font-semibold">{archives ? `${archives.services.length} Services` : "Services"}</h1>
-        </div>
-        <div className="flex flex-wrap gap-2.5">
-          {Archives.BACKENDS.map((backend) => (
-            <Button key={backend} onClick={() => setDialog(backend)} disabled={candidates(backend).length === 0}>
-              Backup <Chip backend={backend} />
-            </Button>
-          ))}
-        </div>
-      </div>
+    <Frame
+      actions={Archives.BACKENDS.map((backend) => (
+        <Button key={backend} onClick={() => setDialog(backend)} disabled={candidates(backend).length === 0}>
+          Backup <Chip backend={backend} />
+        </Button>
+      ))}
+    >
       {dialog && <BackupDialog backend={dialog} candidates={candidates(dialog)} onClose={() => setDialog(undefined)} />}
 
       {archives && <Banner errors={archives.errors} />}

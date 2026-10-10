@@ -1,13 +1,12 @@
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router";
+import { useParams } from "react-router";
 import { Chip } from "../comps/Chip";
 import { Frame } from "../comps/Frame";
 import { StatusPill } from "../comps/StatusPill";
 import { Prettify } from "../helpers/Prettify";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useJob } from "../hooks/useJob";
-import { Route } from "../Route";
 
 export function jobPage() {
   const { id = "" } = useParams();
@@ -31,9 +30,6 @@ export function jobPage() {
   return (
     <Frame>
       <div className="flex flex-col gap-1.5">
-        <Link to={Route.jobs()} className="text-xs text-c-muted hover:text-c-ink">
-          ← Jobs
-        </Link>
         {job && (
           <>
             <h1 className="font-display text-3xl font-semibold">{job.title}</h1>

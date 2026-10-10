@@ -2,7 +2,6 @@
 
 @theme {
     --color-c-bg: #f4efe7;
-    --color-c-nav: #efe8dd;
     --color-c-card: #fffdf9;
     --color-c-cardhead: #f9f5ee;
     --color-c-line: #e3d9cb;
@@ -31,6 +30,6 @@
         @apply min-h-screen bg-c-bg font-sans text-c-ink;
     }
     #root {
-        @apply flex min-h-screen flex-col md:flex-row;
+        @apply flex min-h-screen flex-col;
     }
 }

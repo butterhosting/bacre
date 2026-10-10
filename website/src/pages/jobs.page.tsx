@@ -24,10 +24,6 @@ export function jobsPage() {
 
   return (
     <Frame>
-      <div>
-        <h1 className="font-display text-3xl font-semibold">Jobs</h1>
-      </div>
-
       <Card>
         {jobs?.map((job) => (
           <Card.Row key={job.id} className="max-md:flex-wrap max-md:gap-y-1">

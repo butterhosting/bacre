@@ -12,7 +12,7 @@ test("every page loads and has its title", async ({ page }) => {
     expectation: { title: string; heading: string };
   };
   const testCases: TestCase[] = [
-    { url: "", expectation: { title: "Services · Bacre", heading: "8 Services" } },
+    { url: "", expectation: { title: "Services · Bacre", heading: "Services 8" } },
     { url: "services/wiki", expectation: { title: "wiki · Bacre", heading: "wiki" } },
     { url: "jobs", expectation: { title: "Jobs · Bacre", heading: "Jobs" } },
   ];
@@ -30,7 +30,7 @@ test("an unknown page leads back to the overview", async ({ page }) => {
   await page.goto("nowhere/at/all");
   // then
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("8 Services");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Services 8");
 });
 
 test("the overview shows every service in its state", async ({ page }) => {
@@ -75,21 +75,21 @@ test("the jobs page starts empty after a seed", async ({ page }) => {
   await expect(page.getByText("No jobs since Bacre was last restarted")).toBeVisible();
 });
 
-test("the sandbox can be purged and seeded from the sidebar", async ({ page }) => {
+test("the sandbox can be purged and seeded from the footer", async ({ page }) => {
   // given
   await page.goto("");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("8 Services");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Services 8");
 
   // when
   await page.getByRole("button", { name: "Purge", exact: true }).click();
   // then
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("0 Services");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Services 0");
   await expect(page.getByText("No bacre.yaml found in the atlas.")).toBeVisible();
 
   // when
   await page.getByRole("button", { name: "Seed", exact: true }).click();
   // then
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("8 Services");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Services 8");
 });
 
 test("the page says in the console which build it runs against", async ({ page }) => {
@@ -98,7 +98,7 @@ test("the page says in the console which build it runs against", async ({ page }
   page.on("console", (message) => messages.push(message.text()));
   // when
   await page.goto("");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText("8 Services");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Services 8");
   // then
   const build = messages.find((message) => message.includes("Bacre"));
   expect(build).toContain("e2e");

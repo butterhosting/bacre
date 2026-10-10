@@ -1,8 +1,9 @@
 import type { ComponentProps } from "react";
 
+/** The toast from favicon.svg, cropped to its own edges so a gap next to it is the gap it looks like */
 export function LogoIcon(props: ComponentProps<"svg">) {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" {...props}>
+    <svg viewBox="3.2 3.7 17.6 17.7" aria-hidden="true" {...props}>
       <defs>
         <radialGradient id="bacre-crumb" cx="50%" cy="58%" r="60%">
           <stop offset="0" stopColor="#ead0a4" />

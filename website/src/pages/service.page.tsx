@@ -31,13 +31,7 @@ export function servicePage() {
   const [restore, setRestore] = useState<Internal.Restoring>();
 
   return (
-    <Frame>
-      <div className="flex flex-col gap-1.5">
-        <Link to={Route.services()} className="text-xs text-c-muted hover:text-c-ink">
-          ← Services
-        </Link>
-        <h1 className="font-display text-3xl font-semibold">{name}</h1>
-      </div>
+    <Frame actions={<h1 className="font-display text-3xl leading-[1.1] font-semibold">{name}</h1>}>
       {backup && service && <BackupDialog backend={backup} candidates={[service]} onClose={() => setBackup(undefined)} />}
       {restore && service && <RestoreDialog service={service} snapshot={restore.snapshot} staged={restore.staged} onClose={() => setRestore(undefined)} />}
 
