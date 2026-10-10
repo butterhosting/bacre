@@ -36,7 +36,7 @@ namespace Internal {
   function Tab({ to, active, children }: TabProps) {
     const { pathname } = useLocation();
     const className = clsx(
-      "-mb-px flex items-center gap-2.5 border-b-[3px] pb-3 font-display text-[34px] leading-[1.1] font-semibold",
+      "-mb-px flex items-center gap-2.5 border-b-[3px] pb-3 font-display text-[28px] leading-[1.1] font-semibold md:text-[34px]",
       active ? "border-c-accent text-c-ink" : "border-transparent text-c-muted transition-colors hover:text-c-ink",
     );
     if (pathname === to) {
@@ -58,8 +58,9 @@ namespace Internal {
     const count = useArchives().archives?.services.length;
     const onJobs = pathname === Route.jobs() || pathname.startsWith(`${Route.jobs()}/`);
     return (
-      <div className="flex flex-wrap items-end justify-between gap-x-3 border-b border-c-line">
-        <nav className="flex gap-8">
+      // on a phone the actions go below the line rather than wrapping inside it, which would lift the underline off the line
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between md:gap-3 md:border-b md:border-c-line">
+        <nav className="flex gap-6 border-b border-c-line md:gap-8 md:border-b-0">
           <Tab to={Route.services()} active={!onJobs}>
             Services {count !== undefined && <span className="rounded-full bg-c-line px-2 py-0.5 font-sans text-sm text-c-ink2">{count}</span>}
           </Tab>
@@ -67,7 +68,7 @@ namespace Internal {
             Jobs
           </Tab>
         </nav>
-        {actions && <div className="flex flex-wrap gap-2.5 pb-3">{actions}</div>}
+        {actions && <div className="flex flex-wrap gap-2.5 md:pb-3">{actions}</div>}
       </div>
     );
   }
